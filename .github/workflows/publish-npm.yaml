@@ -16,3 +16,4 @@ jobs:
       timeout_minutes: 15
       dry_run: ${{ github.event_name != 'release' }}
       github_app_auth: false
+      npm_scope: "@kunobi"
