@@ -1,2 +1,5 @@
 onlyBuiltDependencies:
   - esbuild
+
+overrides:
+  '@kunobi/mcp-installer': link:../mcp-installer

@@ -26,8 +26,10 @@ Usage (in Claude settings):
   }
 
 Options:
-  --help, -h       Show this help message
-  --version, -v    Show version number
+  --help, -h          Show this help message
+  --version, -v       Show version number
+  --install, -i       Register this MCP server with your AI clients
+  --uninstall, -u     Remove this MCP server from your AI clients
 
 Environment:
   KUNOBI_MCP_URL   Override Kunobi's MCP endpoint (default: http://127.0.0.1:3030/mcp)`);
@@ -36,6 +38,18 @@ Environment:
 
 if (arg === '--version' || arg === '-v') {
   console.log(version);
+  process.exit(0);
+}
+
+if (arg === '--install' || arg === '-i') {
+  const { install } = await import('@kunobi/mcp-installer');
+  await install({ name: 'kunobi', command: 'npx', args: ['@kunobi/mcp'] });
+  process.exit(0);
+}
+
+if (arg === '--uninstall' || arg === '-u') {
+  const { uninstall } = await import('@kunobi/mcp-installer');
+  await uninstall({ name: 'kunobi' });
   process.exit(0);
 }
 

@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@kunobi/mcp-installer': link:../mcp-installer
+
 importers:
 
   .:
@@ -11,6 +14,9 @@ importers:
       '@kunobi/mcp-bundler':
         specifier: ^0.0.3
         version: 0.0.3
+      '@kunobi/mcp-installer':
+        specifier: link:../mcp-installer
+        version: link:../mcp-installer
       '@modelcontextprotocol/sdk':
         specifier: ^1.26.0
         version: 1.26.0(zod@4.3.6)
