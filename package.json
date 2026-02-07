@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@kunobi/mcp-bundler": "^0.0.3",
-    "@kunobi/mcp-installer": "^0.0.1",
+    "@kunobi/mcp-installer": "^0.0.3",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "zod": "^4.3.6"
   },

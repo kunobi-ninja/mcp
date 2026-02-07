@@ -20,7 +20,7 @@ Usage (in Claude settings):
     "mcpServers": {
       "kunobi": {
         "command": "npx",
-        "args": ["@kunobi/mcp"]
+        "args": ["-y", "@kunobi/mcp"]
       }
     }
   }
@@ -43,7 +43,11 @@ if (arg === '--version' || arg === '-v') {
 
 if (arg === '--install' || arg === '-i') {
   const { install } = await import('@kunobi/mcp-installer');
-  await install({ name: 'kunobi', command: 'npx', args: ['@kunobi/mcp'] });
+  await install({
+    name: 'kunobi',
+    command: 'npx',
+    args: ['-y', '@kunobi/mcp'],
+  });
   process.exit(0);
 }
 
@@ -252,3 +256,19 @@ await server.connect(transport);
 
 // Non-blocking — server is already running, bundler retries in background
 bundler.connect().catch(() => {});
+
+// Non-blocking version check
+import('@kunobi/mcp-installer')
+  .then(({ checkForUpdate }) => checkForUpdate('@kunobi/mcp', version))
+  .then((update) => {
+    if (update?.updateAvailable) {
+      server.server
+        .sendLoggingMessage({
+          level: 'warning',
+          logger: 'kunobi-mcp',
+          data: `A newer version of @kunobi/mcp is available (${update.current} → ${update.latest}). Restart the MCP server to pick it up.`,
+        })
+        .catch(() => {});
+    }
+  })
+  .catch(() => {});
