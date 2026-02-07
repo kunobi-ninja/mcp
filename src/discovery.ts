@@ -2,12 +2,13 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
+import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
 
 export type KunobiState =
   | { status: 'not_installed' }
-  | { status: 'installed_not_running' }
-  | { status: 'running_mcp_unreachable'; pid: number }
-  | { status: 'connected'; pid: number; tools: string[] };
+  | { status: 'installed_not_running'; variants: string[] }
+  | { status: 'running_mcp_unreachable'; pid: number; variants: string[] }
+  | { status: 'connected'; pid: number; tools: string[]; variants: string[] };
 
 interface LockFileData {
   pid: number;
@@ -15,6 +16,48 @@ interface LockFileData {
   ideName: string;
   transport: string;
   authToken: string;
+}
+
+export function launchHint(): string {
+  const os = platform();
+  if (os === 'darwin') return 'Launch it from your Applications folder.';
+  if (os === 'win32') return 'Launch it from the Start menu.';
+  return 'Launch Kunobi from your app launcher or run it from the terminal.';
+}
+
+export function getLaunchCommand(
+  variant: string,
+): { command: string; args: string[] } | null {
+  const os = platform();
+
+  if (os === 'darwin') {
+    return { command: 'open', args: ['-a', variant] };
+  }
+
+  if (os === 'linux') {
+    const bin = variant.toLowerCase().replace(/\s+/g, '-');
+    const dirs = [
+      '/usr/bin',
+      '/usr/local/bin',
+      join(homedir(), '.local', 'bin'),
+    ];
+    for (const dir of dirs) {
+      const p = join(dir, bin);
+      if (existsSync(p)) return { command: p, args: [] };
+    }
+    return null;
+  }
+
+  if (os === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const exe = join(localAppData, variant, `${variant}.exe`);
+      if (existsSync(exe)) return { command: exe, args: [] };
+    }
+    return null;
+  }
+
+  return null;
 }
 
 const DEFAULT_MCP_URL = 'http://127.0.0.1:3030/mcp';
@@ -63,34 +106,60 @@ async function findKunobiLockFile(): Promise<LockFileData | null> {
   return null;
 }
 
-function isKunobiInstalled(): boolean {
+const KUNOBI_VARIANTS = ['', ' Dev', ' Unstable', ' E2E', ' Local'] as const;
+
+function variantLabel(suffix: string): string {
+  return suffix ? `Kunobi${suffix}` : 'Kunobi';
+}
+
+export function findKunobiVariants(): string[] {
   const os = platform();
+  const found: string[] = [];
 
   if (os === 'darwin') {
-    return (
-      existsSync('/Applications/Kunobi.app') ||
-      existsSync(join(homedir(), 'Applications', 'Kunobi.app'))
-    );
+    const dirs = ['/Applications', join(homedir(), 'Applications')];
+    for (const v of KUNOBI_VARIANTS) {
+      if (dirs.some((dir) => existsSync(join(dir, `Kunobi${v}.app`)))) {
+        found.push(variantLabel(v));
+      }
+    }
+    return found;
   }
 
   if (os === 'linux') {
-    const paths = [
-      '/usr/bin/kunobi',
-      '/usr/local/bin/kunobi',
-      join(homedir(), '.local', 'bin', 'kunobi'),
+    const dirs = [
+      '/usr/bin',
+      '/usr/local/bin',
+      join(homedir(), '.local', 'bin'),
     ];
-    return paths.some((p) => existsSync(p));
+    const linuxVariants: Array<[bin: string, label: string]> = [
+      ['kunobi', 'Kunobi'],
+      ['kunobi-dev', 'Kunobi Dev'],
+      ['kunobi-unstable', 'Kunobi Unstable'],
+      ['kunobi-e2e', 'Kunobi E2E'],
+      ['kunobi-local', 'Kunobi Local'],
+    ];
+    for (const [bin, label] of linuxVariants) {
+      if (dirs.some((dir) => existsSync(join(dir, bin)))) {
+        found.push(label);
+      }
+    }
+    return found;
   }
 
-  // Windows — check common install location
   if (os === 'win32') {
     const localAppData = process.env.LOCALAPPDATA;
     if (localAppData) {
-      return existsSync(join(localAppData, 'Kunobi', 'Kunobi.exe'));
+      for (const v of KUNOBI_VARIANTS) {
+        if (existsSync(join(localAppData, `Kunobi${v}`, `Kunobi${v}.exe`))) {
+          found.push(variantLabel(v));
+        }
+      }
     }
+    return found;
   }
 
-  return false;
+  return found;
 }
 
 async function probeMcpServer(url: string): Promise<string[] | null> {
@@ -103,7 +172,7 @@ async function probeMcpServer(url: string): Promise<string[] | null> {
         id: 1,
         method: 'initialize',
         params: {
-          protocolVersion: '2025-03-26',
+          protocolVersion: LATEST_PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: { name: 'kunobi-mcp-probe', version: '0.0.1' },
         },
@@ -143,6 +212,7 @@ async function probeMcpServer(url: string): Promise<string[] | null> {
 export async function detectKunobi(): Promise<KunobiState> {
   const lockFile = await findKunobiLockFile();
   const mcpUrl = getMcpUrl();
+  const variants = findKunobiVariants();
 
   // Check if MCP server is reachable
   const tools = await probeMcpServer(mcpUrl);
@@ -152,6 +222,7 @@ export async function detectKunobi(): Promise<KunobiState> {
       status: 'connected',
       pid: lockFile?.pid ?? 0,
       tools,
+      variants,
     };
   }
 
@@ -160,12 +231,13 @@ export async function detectKunobi(): Promise<KunobiState> {
     return {
       status: 'running_mcp_unreachable',
       pid: lockFile.pid,
+      variants,
     };
   }
 
   // Not running — check if installed
-  if (isKunobiInstalled()) {
-    return { status: 'installed_not_running' };
+  if (variants.length > 0) {
+    return { status: 'installed_not_running', variants };
   }
 
   return { status: 'not_installed' };
