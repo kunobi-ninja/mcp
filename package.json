@@ -27,8 +27,8 @@
     "dev:unlink": "pnpm unlink @kunobi/mcp-bundler && pnpm unlink @kunobi/mcp-installer && pnpm install"
   },
   "dependencies": {
-    "@kunobi/mcp-bundler": "^0.0.3",
-    "@kunobi/mcp-installer": "^0.0.3",
+    "@kunobi/mcp-bundler": "^0.0.4",
+    "@kunobi/mcp-installer": "^0.0.5",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "zod": "^4.3.6"
   },
