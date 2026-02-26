@@ -1,48 +1,64 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it } from 'vitest';
+import type { VariantScanner, VariantState } from '../scanner.js';
 import { registerStatusTool } from '../tools/status.js';
 
-describe('registerStatusTool', () => {
+type ServerInternals = {
+  _registeredTools: Record<
+    string,
+    {
+      annotations?: {
+        readOnlyHint?: boolean;
+        destructiveHint?: boolean;
+        openWorldHint?: boolean;
+      };
+      handler: (args: unknown) => Promise<{
+        content: Array<{ type: string; text: string }>;
+      }>;
+    }
+  >;
+};
+
+function createServer(): McpServer {
+  return new McpServer(
+    { name: 'test', version: '0.0.1' },
+    { capabilities: { tools: { listChanged: true } } },
+  );
+}
+
+function mockScanner(states: Record<string, VariantState>): VariantScanner {
+  return {
+    getStates: () => new Map(Object.entries(states)),
+  } as unknown as VariantScanner;
+}
+
+describe('registerStatusTool (multi-variant)', () => {
   it('registers kunobi_status tool on the server', () => {
-    const server = new McpServer(
-      { name: 'test', version: '0.0.1' },
-      { capabilities: { tools: { listChanged: true } } },
-    );
+    const server = createServer();
+    const scanner = mockScanner({});
+    registerStatusTool(server, scanner);
 
-    registerStatusTool(server);
-
-    const serverAny = server as unknown as {
-      _registeredTools: Record<string, unknown>;
-    };
-    expect(serverAny._registeredTools).toHaveProperty('kunobi_status');
+    const tool = (server as unknown as ServerInternals)._registeredTools
+      .kunobi_status;
+    expect(tool).toBeDefined();
+    expect(tool.annotations?.readOnlyHint).toBe(true);
   });
 
-  it('tool handler returns a text content response', async () => {
-    const server = new McpServer(
-      { name: 'test', version: '0.0.1' },
-      { capabilities: { tools: { listChanged: true } } },
-    );
+  it('reports connected variants', async () => {
+    const server = createServer();
+    const scanner = mockScanner({
+      dev: { port: 3400, status: 'connected', tools: ['dev/foo', 'dev/bar'] },
+      e2e: { port: 3600, status: 'not_detected', tools: [] },
+    });
+    registerStatusTool(server, scanner);
 
-    registerStatusTool(server);
-
-    const serverAny = server as unknown as {
-      _registeredTools: Record<
-        string,
-        {
-          handler: (args: unknown) => Promise<{
-            content: Array<{ type: string; text: string }>;
-          }>;
-        }
-      >;
-    };
-    const tool = serverAny._registeredTools.kunobi_status;
-    expect(tool).toBeDefined();
-
+    const tool = (server as unknown as ServerInternals)._registeredTools
+      .kunobi_status;
     const result = await tool.handler({});
-    expect(result).toHaveProperty('content');
-    expect(result.content).toBeInstanceOf(Array);
-    expect(result.content.length).toBeGreaterThan(0);
-    expect(result.content[0]).toHaveProperty('type', 'text');
-    expect(typeof result.content[0].text).toBe('string');
+    expect(result.content[0].text).toContain('dev');
+    expect(result.content[0].text).toContain('3400');
+    expect(result.content[0].text).toContain('connected');
+    expect(result.content[0].text).toContain('e2e');
+    expect(result.content[0].text).toContain('not detected');
   });
 });
