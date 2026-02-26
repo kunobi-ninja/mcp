@@ -184,7 +184,7 @@ let checkDone = false;
 
 const bundler = new McpBundler({
   name: 'kunobi',
-  url: getMcpUrl(),
+  transport: { type: 'http', url: getMcpUrl() },
   reconnect: {
     enabled: true,
     intervalMs: 5_000,
