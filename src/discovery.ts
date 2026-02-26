@@ -1,22 +1,7 @@
 import { existsSync } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
-
-export type KunobiState =
-  | { status: 'not_installed' }
-  | { status: 'installed_not_running'; variants: string[] }
-  | { status: 'running_mcp_unreachable'; pid: number; variants: string[] }
-  | { status: 'connected'; pid: number; tools: string[]; variants: string[] };
-
-interface LockFileData {
-  pid: number;
-  workspaceFolders: string[];
-  ideName: string;
-  transport: string;
-  authToken: string;
-}
 
 export function launchHint(): string {
   const os = platform();
@@ -91,52 +76,6 @@ export function getScanConfig(): ScanConfig {
   }
 
   return { ports, intervalMs, missThreshold, enabled };
-}
-
-const DEFAULT_MCP_URL = 'http://127.0.0.1:3030/mcp';
-
-export function getMcpUrl(): string {
-  return process.env.KUNOBI_MCP_URL || DEFAULT_MCP_URL;
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function getLockDirectory(): string {
-  const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
-  return join(configDir, 'ide');
-}
-
-async function findKunobiLockFile(): Promise<LockFileData | null> {
-  const lockDir = getLockDirectory();
-  if (!existsSync(lockDir)) return null;
-
-  try {
-    const files = await readdir(lockDir);
-    const lockFiles = files.filter((f) => f.endsWith('.lock'));
-
-    for (const file of lockFiles) {
-      try {
-        const content = await readFile(join(lockDir, file), 'utf-8');
-        const data: LockFileData = JSON.parse(content);
-        if (data.ideName === 'Kunobi' && isProcessAlive(data.pid)) {
-          return data;
-        }
-      } catch {
-        // Skip malformed lock files
-      }
-    }
-  } catch {
-    // Lock directory read failed
-  }
-
-  return null;
 }
 
 const KUNOBI_VARIANTS = ['', ' Dev', ' Unstable', ' E2E', ' Local'] as const;
@@ -250,38 +189,4 @@ export async function probeKunobiServer(
   } catch {
     return null;
   }
-}
-
-export async function detectKunobi(): Promise<KunobiState> {
-  const lockFile = await findKunobiLockFile();
-  const mcpUrl = getMcpUrl();
-  const variants = findKunobiVariants();
-
-  // Check if MCP server is reachable
-  const result = await probeKunobiServer(mcpUrl);
-
-  if (result !== null) {
-    return {
-      status: 'connected',
-      pid: lockFile?.pid ?? 0,
-      tools: result.tools,
-      variants,
-    };
-  }
-
-  // MCP not reachable — check if running via lock file
-  if (lockFile) {
-    return {
-      status: 'running_mcp_unreachable',
-      pid: lockFile.pid,
-      variants,
-    };
-  }
-
-  // Not running — check if installed
-  if (variants.length > 0) {
-    return { status: 'installed_not_running', variants };
-  }
-
-  return { status: 'not_installed' };
 }
