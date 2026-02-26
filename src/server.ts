@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
-import { McpBundler } from '@kunobi/mcp-bundler';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { detectKunobi, getMcpUrl, launchHint } from './discovery.js';
+import { findKunobiVariants, getScanConfig, launchHint } from './discovery.js';
+import { VariantScanner } from './scanner.js';
 import { registerLaunchTool } from './tools/launch.js';
 import { registerStatusTool } from './tools/status.js';
 
@@ -32,7 +32,10 @@ Options:
   --uninstall, -u     Remove this MCP server from your AI clients
 
 Environment:
-  KUNOBI_MCP_URL   Override Kunobi's MCP endpoint (default: http://127.0.0.1:3030/mcp)`);
+  KUNOBI_SCAN_INTERVAL       Scan interval in ms (default: 5000)
+  KUNOBI_SCAN_PORTS          Comma-separated port filter (default: all known)
+  KUNOBI_SCAN_ENABLED        Set "false" to disable scanning
+  KUNOBI_SCAN_MISS_THRESHOLD Misses before teardown (default: 3)`);
   process.exit(0);
 }
 
@@ -57,12 +60,31 @@ if (arg === '--uninstall' || arg === '-u') {
   process.exit(0);
 }
 
+const scanConfig = getScanConfig();
+
 const server = new McpServer(
   { name: 'kunobi', version },
   { capabilities: { tools: { listChanged: true }, logging: {} } },
 );
 
-registerStatusTool(server);
+const scanner = new VariantScanner(server, {
+  ports: scanConfig.ports,
+  intervalMs: scanConfig.intervalMs,
+  missThreshold: scanConfig.missThreshold,
+  logger: (level, message) => {
+    if (level === 'error' || level === 'warn') {
+      server.server
+        .sendLoggingMessage({
+          level: level === 'error' ? 'error' : 'warning',
+          logger: 'kunobi-mcp',
+          data: message,
+        })
+        .catch(() => {});
+    }
+  },
+});
+
+registerStatusTool(server, scanner);
 registerLaunchTool(server);
 
 // Resource: passive way for the LLM to check Kunobi state
@@ -70,17 +92,28 @@ server.registerResource(
   'kunobi_status',
   'kunobi://status',
   {
-    description: 'Current Kunobi connection state and available tools',
+    description: 'Current Kunobi connection state across all variants',
     mimeType: 'application/json',
   },
   async () => {
-    const state = await detectKunobi();
+    const states: Record<string, unknown> = {};
+    for (const [variant, state] of scanner.getStates()) {
+      states[variant] = state;
+    }
     return {
       contents: [
         {
           uri: 'kunobi://status',
           mimeType: 'application/json',
-          text: JSON.stringify(state, null, 2),
+          text: JSON.stringify(
+            {
+              variants: states,
+              installedVariants: findKunobiVariants(),
+              scanInterval: scanConfig.intervalMs,
+            },
+            null,
+            2,
+          ),
         },
       ],
     };
@@ -90,27 +123,25 @@ server.registerResource(
 // Prompt: guide user through Kunobi setup
 server.registerPrompt(
   'kunobi-setup',
-  {
-    description: 'Check Kunobi status and provide setup instructions',
-  },
+  { description: 'Check Kunobi status and provide setup instructions' },
   async () => {
-    const state = await detectKunobi();
-    let instructions: string;
+    const states = scanner.getStates();
+    const connected = [...states.entries()].filter(
+      ([, s]) => s.status === 'connected',
+    );
+    const installed = findKunobiVariants();
 
-    switch (state.status) {
-      case 'not_installed':
-        instructions =
-          'Kunobi is not installed. Download it from https://kunobi.ninja/downloads and install it on your system.';
-        break;
-      case 'installed_not_running':
-        instructions = `Kunobi is installed but not running (found: ${state.variants.join(', ')}). ${launchHint()}`;
-        break;
-      case 'running_mcp_unreachable':
-        instructions = `Kunobi is running (PID ${state.pid}) but the MCP endpoint is not reachable. Open Kunobi Settings and make sure MCP is enabled.`;
-        break;
-      case 'connected':
-        instructions = `Kunobi is connected and ready. ${state.tools.length} tools available: ${state.tools.join(', ')}.${state.variants.length > 0 ? ` Installed variants: ${state.variants.join(', ')}.` : ''}`;
-        break;
+    let instructions: string;
+    if (connected.length > 0) {
+      const summary = connected
+        .map(([v, s]) => `${v} (${s.tools.length} tools)`)
+        .join(', ');
+      instructions = `Kunobi is connected. Active variants: ${summary}.${installed.length > 0 ? ` Installed: ${installed.join(', ')}.` : ''}`;
+    } else if (installed.length > 0) {
+      instructions = `Kunobi is installed but no variants are running (found: ${installed.join(', ')}). ${launchHint()}`;
+    } else {
+      instructions =
+        'Kunobi is not installed. Download it from https://kunobi.ninja/downloads and install it on your system.';
     }
 
     return {
@@ -131,41 +162,48 @@ server.registerPrompt(
     description: 'Diagnose why Kunobi tools are unavailable and suggest fixes',
   },
   async () => {
-    const state = await detectKunobi();
+    const states = scanner.getStates();
+    const installed = findKunobiVariants();
     const steps: string[] = [];
 
-    switch (state.status) {
-      case 'not_installed':
+    const connected = [...states.entries()].filter(
+      ([, s]) => s.status === 'connected',
+    );
+    const disconnected = [...states.entries()].filter(
+      ([, s]) => s.status === 'disconnected',
+    );
+
+    if (connected.length > 0) {
+      steps.push(`Connected variants: ${connected.map(([v]) => v).join(', ')}`);
+    }
+    if (disconnected.length > 0) {
+      steps.push(
+        `Disconnected (reconnecting): ${disconnected.map(([v]) => v).join(', ')}`,
+      );
+    }
+    if (connected.length === 0 && disconnected.length === 0) {
+      if (installed.length === 0) {
         steps.push(
-          'Kunobi is not installed on this system.',
+          'No Kunobi variants detected.',
           '1. Download Kunobi from https://kunobi.ninja/downloads',
           '2. Install and launch the application',
           '3. Enable MCP in Kunobi Settings',
         );
-        break;
-      case 'installed_not_running':
+      } else {
         steps.push(
-          `Kunobi is installed but not running. Found variants: ${state.variants.join(', ')}.`,
+          `Kunobi is installed (${installed.join(', ')}) but no variants are running.`,
           `1. ${launchHint()}`,
           '2. Wait a few seconds for MCP to initialize',
           '3. Tools will appear automatically once connected',
         );
-        break;
-      case 'running_mcp_unreachable':
-        steps.push(
-          `Kunobi is running (PID ${state.pid}) but the MCP endpoint is unreachable.`,
-          '1. Open Kunobi Settings and verify MCP is enabled',
-          `2. Check that the MCP endpoint is accessible at ${getMcpUrl()}`,
-          '3. Try restarting Kunobi',
-        );
-        break;
-      case 'connected':
-        steps.push(
-          'No issues detected — Kunobi is connected and working.',
-          `${state.tools.length} tools available: ${state.tools.join(', ')}`,
-        );
-        break;
+      }
     }
+
+    steps.push(
+      '',
+      `Scanning ports: ${[...states.entries()].map(([v, s]) => `${v}:${s.port}`).join(', ')}`,
+    );
+    steps.push(`Scan interval: ${scanConfig.intervalMs}ms`);
 
     return {
       messages: [
@@ -178,84 +216,11 @@ server.registerPrompt(
   },
 );
 
-const CONNECTION_CHECK_AFTER = 6; // Check installation after ~30s (6 × 5s)
-let failCount = 0;
-let checkDone = false;
-
-const bundler = new McpBundler({
-  name: 'kunobi',
-  url: getMcpUrl(),
-  reconnect: {
-    enabled: true,
-    intervalMs: 5_000,
-    maxRetries: Number.POSITIVE_INFINITY,
-  },
-  logger: (level: string) => {
-    if (level === 'error') {
-      failCount++;
-      if (failCount >= CONNECTION_CHECK_AFTER && !checkDone) {
-        checkDone = true;
-        detectKunobi().then((state) => {
-          let msg: string | undefined;
-          switch (state.status) {
-            case 'not_installed':
-              msg =
-                'Kunobi is not installed. Download it from https://kunobi.ninja/downloads';
-              break;
-            case 'installed_not_running':
-              msg = `Kunobi is installed but not running (found: ${state.variants.join(', ')}). ${launchHint()}`;
-              break;
-            case 'running_mcp_unreachable':
-              msg =
-                'Kunobi is running but MCP is unreachable. Check that MCP is enabled in Kunobi Settings.';
-              break;
-          }
-          if (msg) {
-            server.server
-              .sendLoggingMessage({
-                level: 'warning',
-                logger: 'kunobi-mcp',
-                data: msg,
-              })
-              .catch(() => {});
-          }
-        });
-      }
-    }
-  },
-});
-
-async function notifyToolsChanged(): Promise<void> {
-  try {
-    await server.server.sendToolListChanged();
-  } catch {
-    // Client may not support notifications yet
-  }
-}
-
-bundler.on('connected', async () => {
-  failCount = 0;
-  checkDone = false;
-  await bundler.registerTools(server);
-  await notifyToolsChanged();
-});
-
-bundler.on('disconnected', async () => {
-  bundler.unregisterTools(server);
-  await notifyToolsChanged();
-});
-
-bundler.on('tools_changed', async () => {
-  bundler.unregisterTools(server);
-  await bundler.registerTools(server);
-  await notifyToolsChanged();
-});
-
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-// Non-blocking — server is already running, bundler retries in background
-bundler.connect().catch(() => {});
+// Start scanning — non-blocking, bundlers connect in background
+scanner.start();
 
 // Non-blocking version check
 import('@kunobi/mcp-installer')
