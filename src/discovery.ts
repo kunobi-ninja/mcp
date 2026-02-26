@@ -60,6 +60,39 @@ export function getLaunchCommand(
   return null;
 }
 
+export const DEFAULT_VARIANT_PORTS: Record<string, number> = {
+  legacy: 3030,
+  stable: 3200,
+  unstable: 3300,
+  dev: 3400,
+  local: 3500,
+  e2e: 3600,
+};
+
+export interface ScanConfig {
+  ports: Record<string, number>;
+  intervalMs: number;
+  missThreshold: number;
+  enabled: boolean;
+}
+
+export function getScanConfig(): ScanConfig {
+  const enabled = process.env.KUNOBI_SCAN_ENABLED !== 'false';
+  const intervalMs = Number(process.env.KUNOBI_SCAN_INTERVAL) || 5000;
+  const missThreshold = Number(process.env.KUNOBI_SCAN_MISS_THRESHOLD) || 3;
+
+  let ports = { ...DEFAULT_VARIANT_PORTS };
+  const portsEnv = process.env.KUNOBI_SCAN_PORTS;
+  if (portsEnv) {
+    const allowed = new Set(portsEnv.split(',').map((p) => Number(p.trim())));
+    ports = Object.fromEntries(
+      Object.entries(ports).filter(([, port]) => allowed.has(port)),
+    );
+  }
+
+  return { ports, intervalMs, missThreshold, enabled };
+}
+
 const DEFAULT_MCP_URL = 'http://127.0.0.1:3030/mcp';
 
 export function getMcpUrl(): string {
@@ -162,7 +195,9 @@ export function findKunobiVariants(): string[] {
   return found;
 }
 
-async function probeMcpServer(url: string): Promise<string[] | null> {
+export async function probeKunobiServer(
+  url: string,
+): Promise<{ tools: string[]; serverName: string } | null> {
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -181,7 +216,12 @@ async function probeMcpServer(url: string): Promise<string[] | null> {
     });
     if (!response.ok) return null;
 
-    // If we got a valid response, probe for tools
+    const initBody = (await response.json()) as {
+      result?: { serverInfo?: { name?: string } };
+    };
+    const serverName = initBody.result?.serverInfo?.name ?? '';
+    if (!serverName.toLowerCase().includes('kunobi')) return null;
+
     const toolsResponse = await fetch(url, {
       method: 'POST',
       headers: {
@@ -198,12 +238,15 @@ async function probeMcpServer(url: string): Promise<string[] | null> {
       }),
       signal: AbortSignal.timeout(3_000),
     });
-    if (!toolsResponse.ok) return [];
+    if (!toolsResponse.ok) return { tools: [], serverName };
 
     const body = (await toolsResponse.json()) as {
       result?: { tools?: Array<{ name: string }> };
     };
-    return body.result?.tools?.map((t) => t.name) ?? [];
+    return {
+      tools: body.result?.tools?.map((t) => t.name) ?? [],
+      serverName,
+    };
   } catch {
     return null;
   }
@@ -215,13 +258,13 @@ export async function detectKunobi(): Promise<KunobiState> {
   const variants = findKunobiVariants();
 
   // Check if MCP server is reachable
-  const tools = await probeMcpServer(mcpUrl);
+  const result = await probeKunobiServer(mcpUrl);
 
-  if (tools !== null) {
+  if (result !== null) {
     return {
       status: 'connected',
       pid: lockFile?.pid ?? 0,
-      tools,
+      tools: result.tools,
       variants,
     };
   }
