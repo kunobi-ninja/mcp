@@ -148,7 +148,7 @@ export class VariantScanner {
 
     const bundler = new McpBundler({
       name: variant,
-      url: `http://127.0.0.1:${port}/mcp`,
+      transport: { type: 'http', url: `http://127.0.0.1:${port}/mcp` },
       reconnect: {
         enabled: true,
         intervalMs: this.intervalMs,
@@ -159,8 +159,10 @@ export class VariantScanner {
 
     this.tracked.set(variant, { bundler, port, missCount: 0 });
 
+    const prefix = `${variant}/`;
+
     bundler.on('connected', async () => {
-      await bundler.registerTools(this.server);
+      await bundler.registerTools(this.server, prefix);
       this.notifyToolsChanged();
     });
 
@@ -171,7 +173,7 @@ export class VariantScanner {
 
     bundler.on('tools_changed', async () => {
       bundler.unregisterTools(this.server);
-      await bundler.registerTools(this.server);
+      await bundler.registerTools(this.server, prefix);
       this.notifyToolsChanged();
     });
 
