@@ -91,7 +91,7 @@ export class VariantScanner {
         states.set(variant, {
           port,
           status: bundlerState === 'idle' ? 'connecting' : bundlerState,
-          tools: tracked.bundler.getTools().map((t) => `${variant}/${t}`),
+          tools: tracked.bundler.getTools().map((t) => `${variant}__${t}`),
         });
       } else {
         states.set(variant, { port, status: 'not_detected', tools: [] });
@@ -166,7 +166,7 @@ export class VariantScanner {
 
     this.tracked.set(variant, { bundler, port, missCount: 0 });
 
-    const prefix = `${variant}/`;
+    const prefix = `${variant}__`;
 
     bundler.on('connected', async () => {
       await bundler.registerTools(this.server, prefix);

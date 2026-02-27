@@ -79,7 +79,7 @@ describe('VariantState type', () => {
     const state: VariantState = {
       port: 3400,
       status: 'connected',
-      tools: ['dev/foo', 'dev/bar'],
+      tools: ['dev__foo', 'dev__bar'],
     };
     expect(state.status).toBe('connected');
     expect(state.tools).toHaveLength(2);

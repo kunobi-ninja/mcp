@@ -48,7 +48,7 @@ describe('registerStatusTool (multi-variant)', () => {
   it('reports connected variants', async () => {
     const server = createServer();
     const scanner = mockScanner({
-      dev: { port: 3400, status: 'connected', tools: ['dev/foo', 'dev/bar'] },
+      dev: { port: 3400, status: 'connected', tools: ['dev__foo', 'dev__bar'] },
       e2e: { port: 3600, status: 'not_detected', tools: [] },
     });
     registerStatusTool(server, scanner);
@@ -68,7 +68,7 @@ describe('registerStatusTool (multi-variant)', () => {
     const lastScan = new Date(Date.now() - 3000);
     const scanner = {
       ...mockScanner({
-        dev: { port: 3400, status: 'connected', tools: ['dev/foo'] },
+        dev: { port: 3400, status: 'connected', tools: ['dev__foo'] },
       }),
       getLastScanTime: () => lastScan,
     } as unknown as VariantScanner;

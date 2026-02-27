@@ -60,7 +60,7 @@ const server = new McpServer(
     instructions: [
       'Kunobi is a platform engineering desktop app (https://kunobi.ninja). This MCP server is a hub that automatically discovers and connects to running Kunobi instances. Multiple variants may run simultaneously (legacy, stable, unstable, dev, etc.), each on a dedicated port.',
       '',
-      'When a Kunobi variant connects, its tools are registered here with a prefixed name: e.g. a tool "get_pod_logs" from the "dev" variant appears as "dev/get_pod_logs". Tools appear and disappear dynamically as Kunobi variants start and stop.',
+      'When a Kunobi variant connects, its tools are registered here with a prefixed name: e.g. a tool "get_pod_logs" from the "dev" variant appears as "dev__get_pod_logs". Tools appear and disappear dynamically as Kunobi variants start and stop.',
       '',
       'If Kunobi is not installed, it can be downloaded from https://kunobi.ninja/downloads',
       '',
@@ -72,7 +72,7 @@ const server = new McpServer(
       'Typical workflow:',
       "1. Call kunobi_status to see what's connected",
       '2. If nothing is connected, call kunobi_launch then kunobi_refresh',
-      '3. Use the variant-prefixed tools (e.g. stable/get_pod_logs) for operations',
+      '3. Use the variant-prefixed tools (e.g. stable__get_pod_logs) for operations',
     ].join('\n'),
   },
 );
