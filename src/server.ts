@@ -15,21 +15,11 @@ const arg = process.argv[2];
 if (arg === '--help' || arg === '-h') {
   console.log(`Kunobi MCP server v${version} — connects AI assistants to the Kunobi desktop app.
 
-Usage (in Claude settings):
-  {
-    "mcpServers": {
-      "kunobi": {
-        "command": "npx",
-        "args": ["-y", "@kunobi/mcp"]
-      }
-    }
-  }
-
-Options:
-  --help, -h          Show this help message
-  --version, -v       Show version number
+Commands:
   --install, -i       Register this MCP server with your AI clients
   --uninstall, -u     Remove this MCP server from your AI clients
+  --help, -h          Show this help message
+  --version, -v       Show version number
 
 Environment:
   MCP_KUNOBI_INTERVAL       Scan interval in ms (default: 5000)

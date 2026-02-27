@@ -1,6 +1,6 @@
 {
   "name": "@kunobi/mcp",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "MCP server for Kunobi — platform management for AI assistants",
   "type": "module",
   "license": "Apache-2.0",
@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist && rollup -c && chmod +x dist/server.js",
+    "postbuild": "test -d node_modules/.bin && ln -sf ../../dist/server.js node_modules/.bin/kunobi-mcp 2>/dev/null || true",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
     "format": "biome format --write .",
