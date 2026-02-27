@@ -48,7 +48,7 @@ export function registerStatusTool(
     'kunobi_status',
     {
       description:
-        'Check which Kunobi variants are currently connected to this hub. Reports each variant\'s port, connection status, available tools, and when the last scan occurred. Call this before using Kunobi tools to understand what\'s available.',
+        "Check which Kunobi variants are currently connected to this hub. Reports each variant's port, connection status, available tools, and when the last scan occurred. Call this before using Kunobi tools to understand what's available.",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
