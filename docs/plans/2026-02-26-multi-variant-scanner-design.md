@@ -46,10 +46,10 @@ Ports that respond but don't identify as Kunobi are ignored.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `KUNOBI_MCP_URL` | *(none)* | Legacy single-URL override, treated as "legacy" variant |
-| `KUNOBI_SCAN_INTERVAL` | `5000` | Scan interval in ms |
-| `KUNOBI_SCAN_PORTS` | *(all known)* | Comma-separated port override, e.g. `"3400,3500"` |
-| `KUNOBI_SCAN_ENABLED` | `"true"` | Set `"false"` to disable scanning (only use `KUNOBI_MCP_URL`) |
+| `MCP_KUNOBI_URL` | *(none)* | Legacy single-URL override, treated as "legacy" variant |
+| `MCP_KUNOBI_INTERVAL` | `5000` | Scan interval in ms |
+| `MCP_KUNOBI_PORTS` | *(all known)* | Comma-separated port override, e.g. `"3400,3500"` |
+| `MCP_KUNOBI_ENABLED` | `"true"` | Set `"false"` to disable scanning (only use `MCP_KUNOBI_URL`) |
 
 ## Scanner Lifecycle
 

@@ -54,10 +54,10 @@ describe('getScanConfig', () => {
 
   beforeEach(() => {
     for (const key of [
-      'KUNOBI_SCAN_INTERVAL',
-      'KUNOBI_SCAN_PORTS',
-      'KUNOBI_SCAN_ENABLED',
-      'KUNOBI_SCAN_MISS_THRESHOLD',
+      'MCP_KUNOBI_INTERVAL',
+      'MCP_KUNOBI_PORTS',
+      'MCP_KUNOBI_ENABLED',
+      'MCP_KUNOBI_MISS_THRESHOLD',
     ]) {
       savedEnv[key] = process.env[key];
       delete process.env[key];
@@ -79,24 +79,24 @@ describe('getScanConfig', () => {
     expect(config.enabled).toBe(true);
   });
 
-  it('respects KUNOBI_SCAN_INTERVAL', () => {
-    process.env.KUNOBI_SCAN_INTERVAL = '10000';
+  it('respects MCP_KUNOBI_INTERVAL', () => {
+    process.env.MCP_KUNOBI_INTERVAL = '10000';
     expect(getScanConfig().intervalMs).toBe(10000);
   });
 
-  it('respects KUNOBI_SCAN_PORTS to filter variants', () => {
-    process.env.KUNOBI_SCAN_PORTS = '3400,3500';
+  it('respects MCP_KUNOBI_PORTS to filter variants', () => {
+    process.env.MCP_KUNOBI_PORTS = '3400,3500';
     const config = getScanConfig();
     expect(config.ports).toEqual({ dev: 3400, local: 3500 });
   });
 
-  it('respects KUNOBI_SCAN_ENABLED=false', () => {
-    process.env.KUNOBI_SCAN_ENABLED = 'false';
+  it('respects MCP_KUNOBI_ENABLED=false', () => {
+    process.env.MCP_KUNOBI_ENABLED = 'false';
     expect(getScanConfig().enabled).toBe(false);
   });
 
-  it('respects KUNOBI_SCAN_MISS_THRESHOLD', () => {
-    process.env.KUNOBI_SCAN_MISS_THRESHOLD = '5';
+  it('respects MCP_KUNOBI_MISS_THRESHOLD', () => {
+    process.env.MCP_KUNOBI_MISS_THRESHOLD = '5';
     expect(getScanConfig().missThreshold).toBe(5);
   });
 });
@@ -142,12 +142,12 @@ export interface ScanConfig {
 }
 
 export function getScanConfig(): ScanConfig {
-  const enabled = process.env.KUNOBI_SCAN_ENABLED !== 'false';
-  const intervalMs = Number(process.env.KUNOBI_SCAN_INTERVAL) || 5000;
-  const missThreshold = Number(process.env.KUNOBI_SCAN_MISS_THRESHOLD) || 3;
+  const enabled = process.env.MCP_KUNOBI_ENABLED !== 'false';
+  const intervalMs = Number(process.env.MCP_KUNOBI_INTERVAL) || 5000;
+  const missThreshold = Number(process.env.MCP_KUNOBI_MISS_THRESHOLD) || 3;
 
   let ports = { ...DEFAULT_VARIANT_PORTS };
-  const portsEnv = process.env.KUNOBI_SCAN_PORTS;
+  const portsEnv = process.env.MCP_KUNOBI_PORTS;
   if (portsEnv) {
     const allowed = new Set(portsEnv.split(',').map((p) => Number(p.trim())));
     ports = Object.fromEntries(
@@ -764,10 +764,10 @@ Options:
   --uninstall, -u     Remove this MCP server from your AI clients
 
 Environment:
-  KUNOBI_SCAN_INTERVAL       Scan interval in ms (default: 5000)
-  KUNOBI_SCAN_PORTS          Comma-separated port filter (default: all known)
-  KUNOBI_SCAN_ENABLED        Set "false" to disable scanning
-  KUNOBI_SCAN_MISS_THRESHOLD Misses before teardown (default: 3)`);
+  MCP_KUNOBI_INTERVAL       Scan interval in ms (default: 5000)
+  MCP_KUNOBI_PORTS          Comma-separated port filter (default: all known)
+  MCP_KUNOBI_ENABLED        Set "false" to disable scanning
+  MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`);
   process.exit(0);
 }
 
