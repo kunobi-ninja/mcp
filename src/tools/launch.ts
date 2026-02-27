@@ -8,7 +8,7 @@ export function registerLaunchTool(server: McpServer): void {
     'kunobi_launch',
     {
       description:
-        'Launch the Kunobi desktop app. Optionally specify which variant to launch (e.g. "Kunobi Dev"). If omitted, launches the first installed variant.',
+        'Launch the Kunobi desktop app. Optionally specify a variant (e.g. "Kunobi Dev"). If no variant is specified, launches the first installed one. After launching, call kunobi_refresh to detect the new instance immediately instead of waiting for the next automatic scan.',
       inputSchema: {
         variant: z
           .string()
