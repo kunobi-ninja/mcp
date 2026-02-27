@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_VARIANT_PORTS,
   getScanConfig,
+  parseJsonOrSse,
   probeKunobiServer,
 } from '../discovery.js';
 
@@ -67,6 +68,36 @@ describe('getScanConfig', () => {
   it('respects MCP_KUNOBI_MISS_THRESHOLD', () => {
     process.env.MCP_KUNOBI_MISS_THRESHOLD = '5';
     expect(getScanConfig().missThreshold).toBe(5);
+  });
+});
+
+describe('parseJsonOrSse', () => {
+  it('parses plain JSON response', async () => {
+    const body = JSON.stringify({ result: { value: 42 } });
+    const response = new Response(body);
+    const parsed = await parseJsonOrSse<{ result: { value: number } }>(
+      response,
+    );
+    expect(parsed).toEqual({ result: { value: 42 } });
+  });
+
+  it('parses SSE-formatted response (data: prefix)', async () => {
+    const json = { result: { serverInfo: { name: 'kunobi-mcp' } } };
+    const body = `data: ${JSON.stringify(json)}\n\n`;
+    const response = new Response(body);
+    const parsed =
+      await parseJsonOrSse<{ result: { serverInfo: { name: string } } }>(
+        response,
+      );
+    expect(parsed).toEqual(json);
+  });
+
+  it('handles SSE with trailing newlines', async () => {
+    const json = { result: 'ok' };
+    const body = `data: ${JSON.stringify(json)}\n\ndata: [DONE]\n\n`;
+    const response = new Response(body);
+    const parsed = await parseJsonOrSse<{ result: string }>(response);
+    expect(parsed).toEqual(json);
   });
 });
 

@@ -134,13 +134,33 @@ export function findKunobiVariants(): string[] {
   return found;
 }
 
+/**
+ * Parse a response body that may be plain JSON or SSE-formatted (`data: {...}`).
+ * Older Kunobi builds return SSE even for the probe endpoint.
+ */
+export async function parseJsonOrSse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  const trimmed = text.trim();
+  if (trimmed.startsWith('data: ')) {
+    // SSE format — extract the first `data:` line's JSON payload
+    const jsonStr = trimmed.slice('data: '.length).split('\n')[0];
+    return JSON.parse(jsonStr) as T;
+  }
+  return JSON.parse(trimmed) as T;
+}
+
+const PROBE_HEADERS = {
+  'Content-Type': 'application/json',
+  Accept: 'application/json, text/event-stream',
+};
+
 export async function probeKunobiServer(
   url: string,
 ): Promise<{ tools: string[]; serverName: string } | null> {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: PROBE_HEADERS,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -155,20 +175,34 @@ export async function probeKunobiServer(
     });
     if (!response.ok) return null;
 
-    const initBody = (await response.json()) as {
+    const initBody = await parseJsonOrSse<{
       result?: { serverInfo?: { name?: string } };
-    };
+    }>(response);
     const serverName = initBody.result?.serverInfo?.name ?? '';
     if (!serverName.toLowerCase().includes('kunobi')) return null;
 
+    const sessionHeaders = {
+      ...PROBE_HEADERS,
+      ...(response.headers.has('mcp-session-id')
+        ? { 'mcp-session-id': response.headers.get('mcp-session-id') ?? '' }
+        : {}),
+    };
+
+    // Send notifications/initialized — required by the MCP protocol before
+    // the server will accept further requests like tools/list.
+    await fetch(url, {
+      method: 'POST',
+      headers: sessionHeaders,
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'notifications/initialized',
+      }),
+      signal: AbortSignal.timeout(3_000),
+    });
+
     const toolsResponse = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(response.headers.has('mcp-session-id')
-          ? { 'mcp-session-id': response.headers.get('mcp-session-id') ?? '' }
-          : {}),
-      },
+      headers: sessionHeaders,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 2,
@@ -179,9 +213,9 @@ export async function probeKunobiServer(
     });
     if (!toolsResponse.ok) return { tools: [], serverName };
 
-    const body = (await toolsResponse.json()) as {
+    const body = await parseJsonOrSse<{
       result?: { tools?: Array<{ name: string }> };
-    };
+    }>(toolsResponse);
     return {
       tools: body.result?.tools?.map((t) => t.name) ?? [],
       serverName,
