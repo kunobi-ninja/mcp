@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { findKunobiVariants, getScanConfig, launchHint } from './discovery.js';
 import { VariantScanner } from './scanner.js';
 import { registerLaunchTool } from './tools/launch.js';
+import { registerRefreshTool } from './tools/refresh.js';
 import { registerStatusTool } from './tools/status.js';
 
 const require = createRequire(import.meta.url);
@@ -75,6 +76,7 @@ const scanner = new VariantScanner(server, {
 });
 
 registerStatusTool(server, scanner);
+registerRefreshTool(server, scanner);
 registerLaunchTool(server);
 
 // Resource: passive way for the LLM to check Kunobi state

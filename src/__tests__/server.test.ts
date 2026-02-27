@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it } from 'vitest';
 import type { VariantScanner, VariantState } from '../scanner.js';
 import { registerLaunchTool } from '../tools/launch.js';
+import { registerRefreshTool } from '../tools/refresh.js';
 import { registerStatusTool } from '../tools/status.js';
 
 type ServerInternals = {
@@ -28,6 +29,7 @@ function createServer(): McpServer {
 function mockScanner(states: Record<string, VariantState>): VariantScanner {
   return {
     getStates: () => new Map(Object.entries(states)),
+    scan: async () => {},
   } as unknown as VariantScanner;
 }
 
@@ -52,5 +54,17 @@ describe('built-in tools registration', () => {
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_launch;
     expect(tool).toBeDefined();
+  });
+
+  it('kunobi_refresh is registered with correct annotations', () => {
+    const server = createServer();
+    const scanner = mockScanner({});
+    registerRefreshTool(server, scanner);
+
+    const tool = (server as unknown as ServerInternals)._registeredTools
+      .kunobi_refresh;
+    expect(tool).toBeDefined();
+    expect(tool.annotations?.readOnlyHint).toBe(true);
+    expect(tool.annotations?.destructiveHint).toBe(false);
   });
 });
