@@ -30,6 +30,13 @@ function formatMultiStatus(scanner: VariantScanner): string {
     lines.push('', `Installed on system: ${installed.join(', ')}`);
   }
 
+  const lastScan = scanner.getLastScanTime();
+  if (lastScan) {
+    const agoMs = Date.now() - lastScan.getTime();
+    const agoSec = Math.round(agoMs / 1000);
+    lines.push(`Last scanned: ${agoSec}s ago`);
+  }
+
   return lines.join('\n');
 }
 
@@ -41,7 +48,7 @@ export function registerStatusTool(
     'kunobi_status',
     {
       description:
-        'Check the connection status of all Kunobi variants. Reports which variants are connected, their ports, and available tools.',
+        'Check which Kunobi variants are currently connected to this hub. Reports each variant\'s port, connection status, available tools, and when the last scan occurred. Call this before using Kunobi tools to understand what\'s available.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,

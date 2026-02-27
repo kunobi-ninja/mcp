@@ -29,6 +29,7 @@ function createServer(): McpServer {
 function mockScanner(states: Record<string, VariantState>): VariantScanner {
   return {
     getStates: () => new Map(Object.entries(states)),
+    getLastScanTime: () => null,
   } as unknown as VariantScanner;
 }
 
@@ -60,5 +61,23 @@ describe('registerStatusTool (multi-variant)', () => {
     expect(result.content[0].text).toContain('connected');
     expect(result.content[0].text).toContain('e2e');
     expect(result.content[0].text).toContain('not detected');
+  });
+
+  it('includes last scanned timestamp', async () => {
+    const server = createServer();
+    const lastScan = new Date(Date.now() - 3000);
+    const scanner = {
+      ...mockScanner({
+        dev: { port: 3400, status: 'connected', tools: ['dev/foo'] },
+      }),
+      getLastScanTime: () => lastScan,
+    } as unknown as VariantScanner;
+    registerStatusTool(server, scanner);
+
+    const tool = (server as unknown as ServerInternals)._registeredTools
+      .kunobi_status;
+    const result = await tool.handler({});
+    expect(result.content[0].text).toContain('Last scanned:');
+    expect(result.content[0].text).toContain('ago');
   });
 });
