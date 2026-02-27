@@ -23,10 +23,10 @@ describe('getScanConfig', () => {
 
   beforeEach(() => {
     for (const key of [
-      'KUNOBI_SCAN_INTERVAL',
-      'KUNOBI_SCAN_PORTS',
-      'KUNOBI_SCAN_ENABLED',
-      'KUNOBI_SCAN_MISS_THRESHOLD',
+      'MCP_KUNOBI_INTERVAL',
+      'MCP_KUNOBI_PORTS',
+      'MCP_KUNOBI_ENABLED',
+      'MCP_KUNOBI_MISS_THRESHOLD',
     ]) {
       savedEnv[key] = process.env[key];
       delete process.env[key];
@@ -48,24 +48,24 @@ describe('getScanConfig', () => {
     expect(config.enabled).toBe(true);
   });
 
-  it('respects KUNOBI_SCAN_INTERVAL', () => {
-    process.env.KUNOBI_SCAN_INTERVAL = '10000';
+  it('respects MCP_KUNOBI_INTERVAL', () => {
+    process.env.MCP_KUNOBI_INTERVAL = '10000';
     expect(getScanConfig().intervalMs).toBe(10000);
   });
 
-  it('respects KUNOBI_SCAN_PORTS to filter variants', () => {
-    process.env.KUNOBI_SCAN_PORTS = '3400,3500';
+  it('respects MCP_KUNOBI_PORTS to filter variants', () => {
+    process.env.MCP_KUNOBI_PORTS = '3400,3500';
     const config = getScanConfig();
     expect(config.ports).toEqual({ dev: 3400, local: 3500 });
   });
 
-  it('respects KUNOBI_SCAN_ENABLED=false', () => {
-    process.env.KUNOBI_SCAN_ENABLED = 'false';
+  it('respects MCP_KUNOBI_ENABLED=false', () => {
+    process.env.MCP_KUNOBI_ENABLED = 'false';
     expect(getScanConfig().enabled).toBe(false);
   });
 
-  it('respects KUNOBI_SCAN_MISS_THRESHOLD', () => {
-    process.env.KUNOBI_SCAN_MISS_THRESHOLD = '5';
+  it('respects MCP_KUNOBI_MISS_THRESHOLD', () => {
+    process.env.MCP_KUNOBI_MISS_THRESHOLD = '5';
     expect(getScanConfig().missThreshold).toBe(5);
   });
 });

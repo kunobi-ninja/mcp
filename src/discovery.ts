@@ -62,12 +62,12 @@ export interface ScanConfig {
 }
 
 export function getScanConfig(): ScanConfig {
-  const enabled = process.env.KUNOBI_SCAN_ENABLED !== 'false';
-  const intervalMs = Number(process.env.KUNOBI_SCAN_INTERVAL) || 5000;
-  const missThreshold = Number(process.env.KUNOBI_SCAN_MISS_THRESHOLD) || 3;
+  const enabled = process.env.MCP_KUNOBI_ENABLED !== 'false';
+  const intervalMs = Number(process.env.MCP_KUNOBI_INTERVAL) || 5000;
+  const missThreshold = Number(process.env.MCP_KUNOBI_MISS_THRESHOLD) || 3;
 
   let ports = { ...DEFAULT_VARIANT_PORTS };
-  const portsEnv = process.env.KUNOBI_SCAN_PORTS;
+  const portsEnv = process.env.MCP_KUNOBI_PORTS;
   if (portsEnv) {
     const allowed = new Set(portsEnv.split(',').map((p) => Number(p.trim())));
     ports = Object.fromEntries(
