@@ -1,6 +1,6 @@
 # @kunobi/mcp
 
-MCP server for [Kunobi](https://kunobi.ninja). Runs as a stdio server and connects to Kunobi's built-in HTTP MCP endpoint to expose its tools to AI assistants.
+MCP server for [Kunobi](https://kunobi.ninja). Runs as a stdio server and auto-discovers multiple Kunobi instances across variant-specific ports, exposing their tools to AI assistants with `variant/` prefixed namespacing.
 
 ## Setup
 
@@ -18,20 +18,41 @@ MCP server for [Kunobi](https://kunobi.ninja). Runs as a stdio server and connec
 ## How it works
 
 ```
-Claude Code <--stdio--> @kunobi/mcp <--HTTP--> Kunobi (port 3030)
+Claude Code <--stdio--> @kunobi/mcp <--HTTP--> Kunobi variants
+                          │
+                          ├── scans ports every 5s
+                          ├── confirms Kunobi identity via serverInfo
+                          └── manages one bundler per variant
 ```
 
-- **Always available:** `kunobi_status` — reports whether Kunobi is installed, running, and reachable
-- **Dynamic:** When Kunobi is running with MCP enabled, its tools (`app_info`, `query_store`, `list_stores`, etc.) appear automatically via `notifications/tools/list_changed`
-- **Auto-reconnect:** If Kunobi is stopped or restarted, tools disappear and reappear without restarting the MCP server
+The server periodically probes known ports for running Kunobi instances. When a variant is detected, its tools are registered with a `variant/` prefix (e.g., `dev/list_clusters`, `stable/query_store`). When a variant stops, its tools are automatically removed.
 
-## Configuration (optional)
+### Port map
+
+| Variant  | Port | Tool prefix   |
+|----------|------|---------------|
+| legacy   | 3030 | `legacy/`     |
+| stable   | 3200 | `stable/`     |
+| unstable | 3300 | `unstable/`   |
+| dev      | 3400 | `dev/`        |
+| local    | 3500 | `local/`      |
+| e2e      | 3600 | `e2e/`        |
+
+### Built-in tools
+
+- **`kunobi_status`** — reports all variant connection states, ports, and tool counts
+- **`kunobi_launch`** — launches a Kunobi variant by name
+
+## Configuration
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `KUNOBI_MCP_URL` | `http://127.0.0.1:3030/mcp` | Override Kunobi's MCP HTTP endpoint |
+| `KUNOBI_SCAN_INTERVAL` | `5000` | Scan interval in ms |
+| `KUNOBI_SCAN_PORTS` | all known | Comma-separated port filter (e.g., `3400,3500`) |
+| `KUNOBI_SCAN_ENABLED` | `true` | Set `false` to disable scanning |
+| `KUNOBI_SCAN_MISS_THRESHOLD` | `3` | Consecutive scan misses before removing a variant |
 
-No configuration is required. The server connects to Kunobi's default local endpoint automatically.
+No configuration is required. The server scans all known ports automatically.
 
 ## Development
 
