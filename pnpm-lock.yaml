@@ -12,8 +12,8 @@ importers:
         specifier: ^0.0.5
         version: 0.0.5
       '@kunobi/mcp-installer':
-        specifier: ^0.0.5
-        version: 0.0.5
+        specifier: ^0.0.6
+        version: 0.0.6
       '@modelcontextprotocol/sdk':
         specifier: ^1.26.0
         version: 1.26.0(zod@4.3.6)
@@ -313,8 +313,8 @@ packages:
   '@kunobi/mcp-bundler@0.0.5':
     resolution: {integrity: sha512-CkBH3bKKp8gx60R0MitI6OmKvl1Hn78RLiEO20bNrwvSFNqaWF7BaA8m4bpybNg8R2U8Wc28OhNnMpOrqEPCTw==}
 
-  '@kunobi/mcp-installer@0.0.5':
-    resolution: {integrity: sha512-SBa4UZiL5Kzn8u6DEgT5pSHAFRCF6l10CVpP27Ax+5ao2Zd5sYGAVUOQ6K1dMj6PUWUaj7k3g5VEUmyOF5U2kg==}
+  '@kunobi/mcp-installer@0.0.6':
+    resolution: {integrity: sha512-fH+Zv+57yl7C9sYfva4SKXfxYAZfrKdiXdl/ua3kwtxyqypF2M0YeWQ5K7lW3ot2sIIBpkGWxhEhP4wu0NnDVA==}
     hasBin: true
 
   '@modelcontextprotocol/sdk@1.26.0':
@@ -1334,7 +1334,7 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@kunobi/mcp-installer@0.0.5':
+  '@kunobi/mcp-installer@0.0.6':
     dependencies:
       '@clack/prompts': 0.11.0
 
