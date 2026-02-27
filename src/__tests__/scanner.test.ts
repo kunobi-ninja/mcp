@@ -2,6 +2,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VariantScanner, type VariantState } from '../scanner.js';
 
+vi.mock('../discovery.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../discovery.js')>();
+  return { ...actual, probeKunobiServer: vi.fn().mockResolvedValue(null) };
+});
+
 function createServer(): McpServer {
   return new McpServer(
     { name: 'test', version: '0.0.1' },
@@ -41,6 +46,21 @@ describe('VariantScanner', () => {
       port: 3600,
       status: 'not_detected',
     });
+  });
+
+  it('exposes lastScanTime after a scan', async () => {
+    const { probeKunobiServer } = await import('../discovery.js');
+    vi.mocked(probeKunobiServer).mockResolvedValue(null);
+
+    const server = createServer();
+    const scanner = new VariantScanner(server, {
+      ports: { dev: 3400 },
+      intervalMs: 5000,
+      missThreshold: 3,
+    });
+    expect(scanner.getLastScanTime()).toBeNull();
+    await scanner.scan();
+    expect(scanner.getLastScanTime()).toBeInstanceOf(Date);
   });
 
   it('stop resolves even if never started', async () => {

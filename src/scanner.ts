@@ -35,6 +35,7 @@ export class VariantScanner {
   private tracked: Map<string, TrackedVariant> = new Map();
   private timer: ReturnType<typeof setInterval> | null = null;
   private scanning = false;
+  private lastScanTime: Date | null = null;
 
   constructor(server: McpServer, options: ScannerOptions) {
     this.server = server;
@@ -77,6 +78,10 @@ export class VariantScanner {
     this.tracked.clear();
   }
 
+  getLastScanTime(): Date | null {
+    return this.lastScanTime;
+  }
+
   getStates(): Map<string, VariantState> {
     const states = new Map<string, VariantState>();
     for (const [variant, port] of Object.entries(this.ports)) {
@@ -95,7 +100,7 @@ export class VariantScanner {
     return states;
   }
 
-  private async scan(): Promise<void> {
+  async scan(): Promise<void> {
     if (this.scanning) return;
     this.scanning = true;
 
@@ -138,6 +143,8 @@ export class VariantScanner {
           }
         }
       }
+
+      this.lastScanTime = new Date();
     } finally {
       this.scanning = false;
     }
