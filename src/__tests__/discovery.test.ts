@@ -85,10 +85,9 @@ describe('parseJsonOrSse', () => {
     const json = { result: { serverInfo: { name: 'kunobi-mcp' } } };
     const body = `data: ${JSON.stringify(json)}\n\n`;
     const response = new Response(body);
-    const parsed =
-      await parseJsonOrSse<{ result: { serverInfo: { name: string } } }>(
-        response,
-      );
+    const parsed = await parseJsonOrSse<{
+      result: { serverInfo: { name: string } };
+    }>(response);
     expect(parsed).toEqual(json);
   });
 
