@@ -149,7 +149,7 @@ server.registerPrompt(
         .join(', ');
       instructions = `Kunobi is connected. Active variants: ${summary}.${installed.length > 0 ? ` Installed: ${installed.join(', ')}.` : ''}`;
     } else if (installed.length > 0) {
-      instructions = `Kunobi is installed but no variants are running (found: ${installed.join(', ')}). ${launchHint()}`;
+      instructions = `Kunobi is installed but no variants are running (found: ${installed.join(', ')}). ${launchHint()} Use kunobi_launch to start it, then kunobi_refresh to detect it immediately.`;
     } else {
       instructions =
         'Kunobi is not installed. Download it from https://kunobi.ninja/downloads and install it on your system.';
@@ -203,8 +203,8 @@ server.registerPrompt(
       } else {
         steps.push(
           `Kunobi is installed (${installed.join(', ')}) but no variants are running.`,
-          `1. ${launchHint()}`,
-          '2. Wait a few seconds for MCP to initialize',
+          `1. ${launchHint()} Or call kunobi_launch.`,
+          '2. Call kunobi_refresh to detect the new instance immediately',
           '3. Tools will appear automatically once connected',
         );
       }
