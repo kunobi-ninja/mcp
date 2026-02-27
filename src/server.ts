@@ -32,10 +32,10 @@ Options:
   --uninstall, -u     Remove this MCP server from your AI clients
 
 Environment:
-  KUNOBI_SCAN_INTERVAL       Scan interval in ms (default: 5000)
-  KUNOBI_SCAN_PORTS          Comma-separated port filter (default: all known)
-  KUNOBI_SCAN_ENABLED        Set "false" to disable scanning
-  KUNOBI_SCAN_MISS_THRESHOLD Misses before teardown (default: 3)`);
+  MCP_KUNOBI_INTERVAL       Scan interval in ms (default: 5000)
+  MCP_KUNOBI_PORTS          Comma-separated port filter (default: all known)
+  MCP_KUNOBI_ENABLED        Set "false" to disable scanning
+  MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`);
   process.exit(0);
 }
 
@@ -221,6 +221,24 @@ await server.connect(transport);
 
 // Start scanning — non-blocking, bundlers connect in background
 scanner.start();
+
+// Graceful shutdown — close bundlers and transport on termination
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const timeout = setTimeout(() => process.exit(1), 5_000);
+  try {
+    await scanner.stop();
+    await server.close();
+  } catch {
+    // Failing shutdown must not prevent exit
+  }
+  clearTimeout(timeout);
+  process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // Non-blocking version check
 import('@kunobi/mcp-installer')
