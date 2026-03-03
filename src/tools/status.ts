@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { DEFAULT_CONFIG_PATH } from '../config.js';
 import { findKunobiVariants } from '../discovery.js';
 import type { VariantScanner } from '../scanner.js';
 
@@ -36,6 +37,8 @@ function formatMultiStatus(scanner: VariantScanner): string {
     const agoSec = Math.round(agoMs / 1000);
     lines.push(`Last scanned: ${agoSec}s ago`);
   }
+
+  lines.push('', `Config: ${DEFAULT_CONFIG_PATH}`);
 
   return lines.join('\n');
 }
