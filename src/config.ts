@@ -24,6 +24,15 @@ export const DEFAULT_CONFIG_PATH = join(
   'mcp.json',
 );
 
+export function saveConfig(
+  config: McpConfig,
+  configPath: string = DEFAULT_CONFIG_PATH,
+): void {
+  const dir = dirname(configPath);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
 export function loadConfig(
   configPath: string = DEFAULT_CONFIG_PATH,
 ): McpConfig {

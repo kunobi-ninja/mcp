@@ -13,29 +13,32 @@ const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
 
 const arg = process.argv[2];
-if (arg === '--help' || arg === '-h') {
-  console.log(`Kunobi MCP server v${version} — connects AI assistants to the Kunobi desktop app.
+const HELP = `Kunobi MCP server v${version} — connects AI assistants to the Kunobi desktop app.
 
 Usage:
-  kunobi-mcp              Interactive TUI (when run in a terminal)
-  kunobi-mcp              MCP server (when stdin is piped by an AI client)
+  kunobi-mcp                        MCP server (when stdin is piped by an AI client)
+  kunobi-mcp list                   Show configured variants and connection status
+  kunobi-mcp add <name> <port>      Add or update a variant
+  kunobi-mcp remove <name>          Remove a variant
+  kunobi-mcp install                Register this MCP server with your AI clients
+  kunobi-mcp uninstall              Remove this MCP server from your AI clients
 
-Commands:
-  --install, -i       Register this MCP server with your AI clients
-  --uninstall, -u     Remove this MCP server from your AI clients
+Options:
   --help, -h          Show this help message
   --version, -v       Show version number
 
 Configuration:
   Config file: ~/.config/kunobi/mcp.json (auto-generated on first run)
-  Edit it to add custom variant ports.
 
 Environment:
   MCP_KUNOBI_INTERVAL       Scan interval in ms (default: 5000)
   MCP_KUNOBI_PORTS          name:port pairs to merge (e.g. juan:4200,test:5000)
                              or bare port numbers to filter (legacy: 3400,3500)
   MCP_KUNOBI_ENABLED        Set "false" to disable scanning
-  MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`);
+  MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`;
+
+if (arg === '--help' || arg === '-h' || (process.stdin.isTTY && !arg)) {
+  console.log(HELP);
   process.exit(0);
 }
 
@@ -44,7 +47,36 @@ if (arg === '--version' || arg === '-v') {
   process.exit(0);
 }
 
-if (arg === '--install' || arg === '-i') {
+if (arg === 'list') {
+  const { runList } = await import('./cli.js');
+  await runList();
+  process.exit(0);
+}
+
+if (arg === 'add') {
+  const name = process.argv[3];
+  const port = Number(process.argv[4]);
+  if (!name || Number.isNaN(port)) {
+    console.error('Usage: kunobi-mcp add <name> <port>');
+    process.exit(1);
+  }
+  const { runAdd } = await import('./cli.js');
+  runAdd(name, port);
+  process.exit(0);
+}
+
+if (arg === 'remove') {
+  const name = process.argv[3];
+  if (!name) {
+    console.error('Usage: kunobi-mcp remove <name>');
+    process.exit(1);
+  }
+  const { runRemove } = await import('./cli.js');
+  runRemove(name);
+  process.exit(0);
+}
+
+if (arg === 'install' || arg === '--install' || arg === '-i') {
   const { install } = await import('@kunobi/mcp-installer');
   await install({
     name: 'kunobi',
@@ -54,18 +86,9 @@ if (arg === '--install' || arg === '-i') {
   process.exit(0);
 }
 
-if (arg === '--uninstall' || arg === '-u') {
+if (arg === 'uninstall' || arg === '--uninstall' || arg === '-u') {
   const { uninstall } = await import('@kunobi/mcp-installer');
   await uninstall({ name: 'kunobi' });
-  process.exit(0);
-}
-
-// Interactive terminal → show TUI; piped stdin (MCP client) → start server
-if (process.stdin.isTTY && !arg) {
-  // React's CJS jsx-runtime has broken ESM resolution under pnpm; production bundle works fine
-  process.env.NODE_ENV = process.env.NODE_ENV || 'production';
-  const { runTui } = await import('./tui/index.js');
-  await runTui();
   process.exit(0);
 }
 
