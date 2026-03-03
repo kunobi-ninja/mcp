@@ -201,11 +201,17 @@ export class VariantScanner {
     this.notifyToolsChanged();
   }
 
+  private notifyTimer: ReturnType<typeof setTimeout> | null = null;
+
   private notifyToolsChanged(): void {
-    try {
-      this.server.server.sendToolListChanged().catch(() => {});
-    } catch {
-      // Client may not support notifications yet
-    }
+    if (this.notifyTimer) return;
+    this.notifyTimer = setTimeout(() => {
+      this.notifyTimer = null;
+      try {
+        this.server.server.sendToolListChanged().catch(() => {});
+      } catch {
+        // Client may not support notifications yet
+      }
+    }, 100);
   }
 }
