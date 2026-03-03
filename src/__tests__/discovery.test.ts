@@ -106,3 +106,49 @@ describe('probeKunobiServer', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('getScanConfig with name:port env format', () => {
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of [
+      'MCP_KUNOBI_INTERVAL',
+      'MCP_KUNOBI_PORTS',
+      'MCP_KUNOBI_ENABLED',
+      'MCP_KUNOBI_MISS_THRESHOLD',
+    ]) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const [key, val] of Object.entries(savedEnv)) {
+      if (val === undefined) delete process.env[key];
+      else process.env[key] = val;
+    }
+  });
+
+  it('parses name:port format in MCP_KUNOBI_PORTS', () => {
+    process.env.MCP_KUNOBI_PORTS = 'juan:4200,test:5000';
+    const config = getScanConfig();
+    expect(config.ports.juan).toBe(4200);
+    expect(config.ports.test).toBe(5000);
+    // defaults still present
+    expect(config.ports.stable).toBe(3200);
+  });
+
+  it('name:port entries override same-named defaults', () => {
+    process.env.MCP_KUNOBI_PORTS = 'dev:9999';
+    const config = getScanConfig();
+    expect(config.ports.dev).toBe(9999);
+    // other defaults still present
+    expect(config.ports.stable).toBe(3200);
+  });
+
+  it('bare numbers still filter (backward compat)', () => {
+    process.env.MCP_KUNOBI_PORTS = '3400,3500';
+    const config = getScanConfig();
+    expect(config.ports).toEqual({ dev: 3400, local: 3500 });
+  });
+});

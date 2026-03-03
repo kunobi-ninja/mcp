@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
+import { CONFIG_DEFAULTS, loadConfig } from './config.js';
 
 export function launchHint(): string {
   const os = platform();
@@ -45,14 +46,7 @@ export function getLaunchCommand(
   return null;
 }
 
-export const DEFAULT_VARIANT_PORTS: Record<string, number> = {
-  legacy: 3030,
-  stable: 3200,
-  unstable: 3300,
-  dev: 3400,
-  local: 3500,
-  e2e: 3600,
-};
+export const DEFAULT_VARIANT_PORTS = CONFIG_DEFAULTS.variants;
 
 export interface ScanConfig {
   ports: Record<string, number>;
@@ -66,13 +60,30 @@ export function getScanConfig(): ScanConfig {
   const intervalMs = Number(process.env.MCP_KUNOBI_INTERVAL) || 5000;
   const missThreshold = Number(process.env.MCP_KUNOBI_MISS_THRESHOLD) || 3;
 
-  let ports = { ...DEFAULT_VARIANT_PORTS };
+  const config = loadConfig();
+  let ports = { ...config.variants };
+
   const portsEnv = process.env.MCP_KUNOBI_PORTS;
   if (portsEnv) {
-    const allowed = new Set(portsEnv.split(',').map((p) => Number(p.trim())));
-    ports = Object.fromEntries(
-      Object.entries(ports).filter(([, port]) => allowed.has(port)),
-    );
+    const entries = portsEnv.split(',').map((p) => p.trim());
+    const hasNamedEntries = entries.some((e) => e.includes(':'));
+
+    if (hasNamedEntries) {
+      // New format: name:port pairs — merge on top
+      for (const entry of entries) {
+        const [name, portStr] = entry.split(':');
+        const port = Number(portStr);
+        if (name && !Number.isNaN(port)) {
+          ports[name] = port;
+        }
+      }
+    } else {
+      // Legacy format: bare port numbers — filter
+      const allowed = new Set(entries.map((p) => Number(p)));
+      ports = Object.fromEntries(
+        Object.entries(ports).filter(([, port]) => allowed.has(port)),
+      );
+    }
   }
 
   return { ports, intervalMs, missThreshold, enabled };
