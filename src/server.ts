@@ -62,6 +62,8 @@ if (arg === '--uninstall' || arg === '-u') {
 
 // Interactive terminal → show TUI; piped stdin (MCP client) → start server
 if (process.stdin.isTTY && !arg) {
+  // React's CJS jsx-runtime has broken ESM resolution under pnpm; production bundle works fine
+  process.env.NODE_ENV = process.env.NODE_ENV || 'production';
   const { runTui } = await import('./tui/index.js');
   await runTui();
   process.exit(0);
