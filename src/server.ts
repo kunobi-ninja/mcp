@@ -16,15 +16,24 @@ const arg = process.argv[2];
 if (arg === '--help' || arg === '-h') {
   console.log(`Kunobi MCP server v${version} — connects AI assistants to the Kunobi desktop app.
 
+Usage:
+  kunobi-mcp              Interactive TUI (when run in a terminal)
+  kunobi-mcp              MCP server (when stdin is piped by an AI client)
+
 Commands:
   --install, -i       Register this MCP server with your AI clients
   --uninstall, -u     Remove this MCP server from your AI clients
   --help, -h          Show this help message
   --version, -v       Show version number
 
+Configuration:
+  Config file: ~/.config/kunobi/mcp.json (auto-generated on first run)
+  Edit it to add custom variant ports.
+
 Environment:
   MCP_KUNOBI_INTERVAL       Scan interval in ms (default: 5000)
-  MCP_KUNOBI_PORTS          Comma-separated port filter (default: all known)
+  MCP_KUNOBI_PORTS          name:port pairs to merge (e.g. juan:4200,test:5000)
+                             or bare port numbers to filter (legacy: 3400,3500)
   MCP_KUNOBI_ENABLED        Set "false" to disable scanning
   MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`);
   process.exit(0);
@@ -63,6 +72,8 @@ const server = new McpServer(
       'When a Kunobi variant connects, its tools are registered here with a prefixed name: e.g. a tool "get_pod_logs" from the "dev" variant appears as "dev__get_pod_logs". Tools appear and disappear dynamically as Kunobi variants start and stop.',
       '',
       'If Kunobi is not installed, it can be downloaded from https://kunobi.ninja/downloads',
+      '',
+      'Configuration: Variant ports are loaded from ~/.config/kunobi/mcp.json (auto-generated). Custom variants can be added by editing this file or setting MCP_KUNOBI_PORTS env var with name:port pairs.',
       '',
       'Available hub tools:',
       "- kunobi_status: Check which variants are connected and when the last scan occurred. Call this first to understand what's available.",
