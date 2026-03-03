@@ -24,6 +24,7 @@ export default {
     /^node:/,
     /^@modelcontextprotocol/,
     /^@kunobi/,
+    /^react/,
   ],
   plugins: [
     resolve({ preferBuiltins: true }),

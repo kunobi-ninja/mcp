@@ -24,7 +24,7 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "test": "vitest run --coverage",
-    "start": "npm run build && node dist/server.js",
+    "start": "npm run build && NODE_ENV=production node dist/server.js",
     "dev:link": "pnpm link ../mcp-bundler && pnpm link ../mcp-installer",
     "dev:unlink": "pnpm unlink @kunobi/mcp-bundler && pnpm unlink @kunobi/mcp-installer && pnpm install"
   },
