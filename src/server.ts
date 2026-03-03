@@ -60,6 +60,13 @@ if (arg === '--uninstall' || arg === '-u') {
   process.exit(0);
 }
 
+// Interactive terminal → show TUI; piped stdin (MCP client) → start server
+if (process.stdin.isTTY && !arg) {
+  const { runTui } = await import('./tui/index.js');
+  await runTui();
+  process.exit(0);
+}
+
 const scanConfig = getScanConfig();
 
 const server = new McpServer(
