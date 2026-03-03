@@ -2,6 +2,7 @@ import { Box, Text, useInput } from 'ink';
 import type React from 'react';
 import { useState } from 'react';
 import { ConfigView } from './ConfigView.js';
+import { InstallView } from './InstallView.js';
 import { StatusView } from './StatusView.js';
 
 type Tab = 'status' | 'config' | 'install';
@@ -45,7 +46,7 @@ export function App(): React.ReactElement {
       <Box marginTop={1}>
         {tab === 'status' && <StatusView />}
         {tab === 'config' && <ConfigView />}
-        {tab === 'install' && <Text dimColor>Install view coming next...</Text>}
+        {tab === 'install' && <InstallView />}
       </Box>
       <Box marginTop={1}>
         <Text dimColor>[1-3] switch tabs [q/Esc] quit</Text>
