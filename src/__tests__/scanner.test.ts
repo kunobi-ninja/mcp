@@ -22,6 +22,7 @@ vi.mock('@kunobi/mcp-bundler', () => {
     }
     async connect() {
       this.state = 'connected';
+      this.emit('connected');
     }
     async close() {
       this.state = 'idle';
@@ -33,7 +34,11 @@ vi.mock('@kunobi/mcp-bundler', () => {
       return this.tools;
     }
     registerTools() {}
+    registerResources() {}
+    registerPrompts() {}
     unregisterTools() {}
+    unregisterResources() {}
+    unregisterPrompts() {}
   }
   return { McpBundler: MockBundler };
 });
@@ -41,7 +46,14 @@ vi.mock('@kunobi/mcp-bundler', () => {
 function createServer(): McpServer {
   return new McpServer(
     { name: 'test', version: '0.0.1' },
-    { capabilities: { tools: { listChanged: true }, logging: {} } },
+    {
+      capabilities: {
+        tools: { listChanged: true },
+        resources: { subscribe: true, listChanged: true },
+        prompts: { listChanged: true },
+        logging: {},
+      },
+    },
   );
 }
 
@@ -301,5 +313,40 @@ describe('scan lifecycle', () => {
     await scanner.stop();
     // After stop, tracked map is cleared
     expect(scanner.getStates().get('dev')?.status).toBe('not_detected');
+  });
+
+  it('notifies tools, resources, and status update on variant change', async () => {
+    const { probeKunobiServer } = await import('../discovery.js');
+    vi.mocked(probeKunobiServer).mockResolvedValue({
+      tools: ['app_info'],
+      serverName: 'kunobi-dev',
+    });
+
+    const server = createServer();
+    const sendToolListChanged = vi
+      .spyOn(server.server, 'sendToolListChanged')
+      .mockResolvedValue(undefined);
+    const sendResourceListChanged = vi
+      .spyOn(server.server, 'sendResourceListChanged')
+      .mockResolvedValue(undefined);
+    const sendResourceUpdated = vi
+      .spyOn(server.server, 'sendResourceUpdated')
+      .mockResolvedValue(undefined);
+
+    const scanner = new VariantScanner(server, {
+      ports: { dev: 3400 },
+      intervalMs: 5000,
+      missThreshold: 3,
+    });
+
+    await scanner.scan();
+    // Advance past the 100ms debounce
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(sendToolListChanged).toHaveBeenCalled();
+    expect(sendResourceListChanged).toHaveBeenCalled();
+    expect(sendResourceUpdated).toHaveBeenCalledWith({
+      uri: 'kunobi://status',
+    });
   });
 });

@@ -97,7 +97,12 @@ const scanConfig = getScanConfig();
 const server = new McpServer(
   { name: 'kunobi', version },
   {
-    capabilities: { tools: { listChanged: true }, logging: {} },
+    capabilities: {
+      tools: { listChanged: true },
+      resources: { subscribe: true, listChanged: true },
+      prompts: { listChanged: true },
+      logging: {},
+    },
     instructions: [
       'Kunobi is a platform engineering desktop app (https://kunobi.ninja). This MCP server is a hub that automatically discovers and connects to running Kunobi instances. Multiple variants may run simultaneously (legacy, stable, unstable, dev, etc.), each on a dedicated port.',
       '',

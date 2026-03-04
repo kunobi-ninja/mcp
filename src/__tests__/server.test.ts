@@ -17,12 +17,19 @@ type ServerInternals = {
       handler: (args: unknown) => Promise<unknown>;
     }
   >;
+  _registeredResources: Record<string, unknown>;
 };
 
 function createServer(): McpServer {
   return new McpServer(
     { name: 'test', version: '0.0.1' },
-    { capabilities: { tools: { listChanged: true } } },
+    {
+      capabilities: {
+        tools: { listChanged: true },
+        resources: { subscribe: true, listChanged: true },
+        prompts: { listChanged: true },
+      },
+    },
   );
 }
 
@@ -66,5 +73,40 @@ describe('built-in tools registration', () => {
     expect(tool).toBeDefined();
     expect(tool.annotations?.readOnlyHint).toBe(true);
     expect(tool.annotations?.destructiveHint).toBe(false);
+  });
+});
+
+describe('resource registration', () => {
+  it('kunobi_status resource can be registered', () => {
+    const server = createServer();
+    const scanner = mockScanner({});
+
+    server.registerResource(
+      'kunobi_status',
+      'kunobi://status',
+      {
+        description: 'Current Kunobi connection state',
+        mimeType: 'application/json',
+      },
+      async () => {
+        const states: Record<string, unknown> = {};
+        for (const [variant, state] of scanner.getStates()) {
+          states[variant] = state;
+        }
+        return {
+          contents: [
+            {
+              uri: 'kunobi://status',
+              mimeType: 'application/json',
+              text: JSON.stringify({ variants: states }, null, 2),
+            },
+          ],
+        };
+      },
+    );
+
+    const resources = (server as unknown as ServerInternals)
+      ._registeredResources;
+    expect(resources['kunobi://status']).toBeDefined();
   });
 });

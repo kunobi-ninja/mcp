@@ -71,6 +71,8 @@ export class VariantScanner {
       async ([variant, { bundler }]) => {
         this.logger('info', `[scanner] Stopping bundler for ${variant}`);
         bundler.unregisterTools(this.server);
+        bundler.unregisterResources(this.server);
+        bundler.unregisterPrompts(this.server);
         await bundler.close();
       },
     );
@@ -170,18 +172,34 @@ export class VariantScanner {
 
     bundler.on('connected', async () => {
       await bundler.registerTools(this.server, prefix);
-      this.notifyToolsChanged();
+      await bundler.registerResources(this.server);
+      await bundler.registerPrompts(this.server, prefix);
+      this.notifyChanged();
     });
 
     bundler.on('disconnected', () => {
       bundler.unregisterTools(this.server);
-      this.notifyToolsChanged();
+      bundler.unregisterResources(this.server);
+      bundler.unregisterPrompts(this.server);
+      this.notifyChanged();
     });
 
     bundler.on('tools_changed', async () => {
       bundler.unregisterTools(this.server);
       await bundler.registerTools(this.server, prefix);
-      this.notifyToolsChanged();
+      this.notifyChanged();
+    });
+
+    bundler.on('resources_changed', async () => {
+      bundler.unregisterResources(this.server);
+      await bundler.registerResources(this.server);
+      this.notifyChanged();
+    });
+
+    bundler.on('prompts_changed', async () => {
+      bundler.unregisterPrompts(this.server);
+      await bundler.registerPrompts(this.server, prefix);
+      this.notifyChanged();
     });
 
     bundler.connect().catch(() => {});
@@ -196,19 +214,26 @@ export class VariantScanner {
       `[scanner] Removing ${variant} (${this.missThreshold} consecutive misses)`,
     );
     tracked.bundler.unregisterTools(this.server);
+    tracked.bundler.unregisterResources(this.server);
+    tracked.bundler.unregisterPrompts(this.server);
     await tracked.bundler.close();
     this.tracked.delete(variant);
-    this.notifyToolsChanged();
+    this.notifyChanged();
   }
 
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
 
-  private notifyToolsChanged(): void {
+  private notifyChanged(): void {
     if (this.notifyTimer) return;
     this.notifyTimer = setTimeout(() => {
       this.notifyTimer = null;
       try {
         this.server.server.sendToolListChanged().catch(() => {});
+        this.server.server.sendResourceListChanged().catch(() => {});
+        this.server.server.sendPromptListChanged().catch(() => {});
+        this.server.server
+          .sendResourceUpdated({ uri: 'kunobi://status' })
+          .catch(() => {});
       } catch {
         // Client may not support notifications yet
       }

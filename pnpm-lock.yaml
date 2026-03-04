@@ -15,8 +15,8 @@ importers:
         specifier: ^0.0.6
         version: 0.0.6
       '@modelcontextprotocol/sdk':
-        specifier: ^1.26.0
-        version: 1.26.0(zod@4.3.6)
+        specifier: ^1.27.1
+        version: 1.27.1(zod@4.3.6)
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -317,8 +317,8 @@ packages:
     resolution: {integrity: sha512-fH+Zv+57yl7C9sYfva4SKXfxYAZfrKdiXdl/ua3kwtxyqypF2M0YeWQ5K7lW3ot2sIIBpkGWxhEhP4wu0NnDVA==}
     hasBin: true
 
-  '@modelcontextprotocol/sdk@1.26.0':
-    resolution: {integrity: sha512-Y5RmPncpiDtTXDbLKswIJzTqu2hyBKxTNsgKqKclDbhIgg1wgtf1fRuvxgTnRfcnxtvvgbIEcqUOzZrJ6iSReg==}
+  '@modelcontextprotocol/sdk@1.27.1':
+    resolution: {integrity: sha512-sr6GbP+4edBwFndLbM60gf07z0FQ79gaExpnsjMGePXqFcSSb7t6iscpjk9DhFhwd+mTEQrzNafGP8/iGGFYaA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
@@ -1328,7 +1328,7 @@ snapshots:
 
   '@kunobi/mcp-bundler@0.0.5':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.26.0(zod@4.3.6)
+      '@modelcontextprotocol/sdk': 1.27.1(zod@4.3.6)
       zod: 4.3.6
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -1338,7 +1338,7 @@ snapshots:
     dependencies:
       '@clack/prompts': 0.11.0
 
-  '@modelcontextprotocol/sdk@1.26.0(zod@4.3.6)':
+  '@modelcontextprotocol/sdk@1.27.1(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.9(hono@4.11.8)
       ajv: 8.17.1
