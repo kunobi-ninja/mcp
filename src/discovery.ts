@@ -163,6 +163,7 @@ export async function parseJsonOrSse<T>(response: Response): Promise<T> {
 const PROBE_HEADERS = {
   'Content-Type': 'application/json',
   Accept: 'application/json, text/event-stream',
+  'X-Kunobi-Client': '@kunobi/mcp',
 };
 
 export async function probeKunobiServer(

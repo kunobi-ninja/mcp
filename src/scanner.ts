@@ -157,7 +157,11 @@ export class VariantScanner {
 
     const bundler = new McpBundler({
       name: variant,
-      transport: { type: 'http', url: `http://127.0.0.1:${port}/mcp` },
+      transport: {
+        type: 'http',
+        url: `http://127.0.0.1:${port}/mcp`,
+        headers: { 'X-Kunobi-Client': '@kunobi/mcp' },
+      },
       reconnect: {
         enabled: true,
         intervalMs: this.intervalMs,
