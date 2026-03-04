@@ -70,20 +70,22 @@ AI assistant <--stdio--> @kunobi/mcp <--HTTP--> Kunobi variants
                           └── manages one bundler per variant
 ```
 
-The server periodically probes known ports for running Kunobi instances. When a variant is detected, its tools are registered with a `variant/` prefix (e.g., `dev/list_clusters`, `stable/query_store`). When a variant stops, its tools are automatically removed.
+The server periodically probes known ports for running Kunobi instances. When a variant is detected, its tools are registered with a `variant__` prefix (e.g., `dev__list_clusters`, `stable__query_store`). When a variant stops, its tools are automatically removed.
 
 ### Multi-variant support
 
 Kunobi ships multiple release channels that run on different ports. This MCP server discovers all of them simultaneously:
 
-| Variant  | Port | Tool prefix   |
-|----------|------|---------------|
-| legacy   | 3030 | `legacy/`     |
-| stable   | 3200 | `stable/`     |
-| unstable | 3300 | `unstable/`   |
-| dev      | 3400 | `dev/`        |
-| local    | 3500 | `local/`      |
-| e2e      | 3600 | `e2e/`        |
+| Variant  | Default port | Tool prefix    |
+|----------|--------------|----------------|
+| legacy   | 3030         | `legacy__`     |
+| stable   | 3200         | `stable__`     |
+| unstable | 3300         | `unstable__`   |
+| dev      | 3400         | `dev__`        |
+| local    | 3500         | `local__`      |
+| e2e      | 3600         | `e2e__`        |
+
+These defaults are auto-generated into `~/.config/kunobi/mcp.json` on first run. You can add custom variants or change ports — see [Configuration](#configuration).
 
 ### Built-in tools
 
@@ -91,40 +93,61 @@ These are always available, even when no Kunobi instance is running:
 
 - **`kunobi_status`** — reports all variant connection states, ports, and tool counts
 - **`kunobi_launch`** — launches a Kunobi variant by name
+- **`kunobi_refresh`** — forces an immediate rescan of all variant ports
 
 ### Dynamic tools
 
 When a Kunobi variant is detected, its tools appear automatically with a variant prefix. For example, if `dev` and `stable` are both running:
 
-- `dev/app_info`, `dev/query_store`, `dev/list_stores`, ...
-- `stable/app_info`, `stable/query_store`, `stable/list_stores`, ...
+- `dev__app_info`, `dev__query_store`, `dev__list_stores`, ...
+- `stable__app_info`, `stable__query_store`, `stable__list_stores`, ...
 
 Tools appear and disappear dynamically as variants start and stop — no MCP server restart needed.
 
 ## Configuration
 
+### Config file
+
+Variant-to-port mappings are stored in `~/.config/kunobi/mcp.json` (auto-generated on first run with defaults). You can edit this file directly or use the CLI:
+
+```bash
+# List all configured variants and their connection status
+kunobi-mcp list
+
+# Add a custom variant
+kunobi-mcp add juan 4200
+
+# Remove a variant
+kunobi-mcp remove juan
+```
+
+### Environment variables
+
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `MCP_KUNOBI_INTERVAL` | `5000` | Scan interval in ms |
-| `MCP_KUNOBI_PORTS` | all known | Comma-separated port filter (e.g., `3400,3500`) |
+| `MCP_KUNOBI_PORTS` | — | `name:port` pairs to merge (e.g., `juan:4200,test:5000`) or bare ports to filter (legacy: `3400,3500`) |
 | `MCP_KUNOBI_ENABLED` | `true` | Set `false` to disable scanning |
 | `MCP_KUNOBI_MISS_THRESHOLD` | `3` | Consecutive scan misses before removing a variant |
 
-No configuration is required. The server scans all known ports automatically.
+Priority: config file defaults → `MCP_KUNOBI_PORTS` env var (merges on top).
 
 ## CLI
 
 ```
-npx @kunobi/mcp [option]
+kunobi-mcp [command] [options]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--install`, `-i` | Register this MCP server with your AI clients |
-| `--uninstall`, `-u` | Remove this MCP server from your AI clients |
+| Command | Description |
+|---------|-------------|
+| `list` | Show configured variants and connection status |
+| `add <name> <port>` | Add or update a variant |
+| `remove <name>` | Remove a variant |
+| `install` | Register this MCP server with your AI clients |
+| `uninstall` | Remove this MCP server from your AI clients |
 | `--help`, `-h` | Show help message |
 | `--version`, `-v` | Show version number |
-| *(no option)* | Start the stdio MCP server (used by AI clients) |
+| *(no command, piped)* | Start the stdio MCP server (used by AI clients) |
 
 ## Development
 
