@@ -1,14 +1,11 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  vi,
   type MockInstance,
+  vi,
 } from 'vitest';
 import type { McpConfig } from '../config.js';
 
@@ -41,8 +38,8 @@ vi.mock('../discovery.js', async (importOriginal) => {
   return { ...actual, probeKunobiServer: vi.fn().mockResolvedValue(null) };
 });
 
-import { probeKunobiServer } from '../discovery.js';
 import { runAdd, runList, runRemove } from '../cli.js';
+import { probeKunobiServer } from '../discovery.js';
 
 describe('runList', () => {
   let logSpy: MockInstance;

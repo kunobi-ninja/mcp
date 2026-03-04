@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CONFIG_DEFAULTS,
   loadConfig,
-  saveConfig,
   type McpConfig,
+  saveConfig,
 } from '../config.js';
 
 describe('loadConfig', () => {

@@ -13,7 +13,6 @@ vi.mock('@kunobi/mcp-bundler', () => {
     state = 'idle';
     handlers = new Map<string, (() => void)[]>();
 
-    constructor() {}
     on(event: string, handler: () => void) {
       if (!this.handlers.has(event)) this.handlers.set(event, []);
       this.handlers.get(event)?.push(handler);

@@ -15,8 +15,8 @@ vi.mock('node:child_process', () => ({
   spawn: vi.fn().mockReturnValue({ unref: vi.fn() }),
 }));
 
-import { findKunobiVariants, getLaunchCommand } from '../discovery.js';
 import { spawn } from 'node:child_process';
+import { findKunobiVariants, getLaunchCommand } from '../discovery.js';
 
 type ServerInternals = {
   _registeredTools: Record<
