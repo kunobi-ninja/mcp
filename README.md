@@ -104,6 +104,18 @@ When a Kunobi variant is detected, its tools appear automatically with a variant
 
 Tools appear and disappear dynamically as variants start and stop — no MCP server restart needed.
 
+### Resources
+
+Resources exposed by Kunobi variants are proxied through automatically. When a variant connects, its resources become available to the AI client.
+
+The server also provides a built-in resource:
+
+- **`kunobi://status`** — JSON snapshot of all variant connection states, ports, and capability counts. Supports subscriptions — clients receive `notifications/resources/updated` whenever variants connect or disconnect.
+
+### Prompts
+
+Prompts from Kunobi variants are registered with a `variant__` prefix (e.g., `dev__setup_cluster`). They appear and disappear alongside their variant, just like tools.
+
 ## Configuration
 
 ### Config file
