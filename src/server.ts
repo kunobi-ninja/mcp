@@ -37,7 +37,7 @@ Environment:
   MCP_KUNOBI_ENABLED        Set "false" to disable scanning
   MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`;
 
-if (arg === '--help' || arg === '-h' || (process.stdin.isTTY && !arg)) {
+if (arg === '--help' || arg === '-h') {
   console.log(HELP);
   process.exit(0);
 }
