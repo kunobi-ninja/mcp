@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it, vi } from 'vitest';
-import type { VariantScanner, VariantState } from '../scanner.js';
+import type { VariantManager, VariantState } from '../manager.js';
 import { registerRefreshTool } from '../tools/refresh.js';
 
 vi.mock('../discovery.js', async (importOriginal) => {
@@ -33,11 +33,11 @@ function createServer(): McpServer {
   );
 }
 
-function mockScanner(states: Record<string, VariantState>): VariantScanner {
+function mockManager(states: Record<string, VariantState>): VariantManager {
   return {
     getStates: () => new Map(Object.entries(states)),
-    scan: vi.fn().mockResolvedValue(undefined),
-  } as unknown as VariantScanner;
+    refresh: vi.fn().mockResolvedValue(undefined),
+  } as unknown as VariantManager;
 }
 
 function getHandler(server: McpServer) {
@@ -48,8 +48,8 @@ function getHandler(server: McpServer) {
 describe('registerRefreshTool', () => {
   it('registers with correct annotations', () => {
     const server = createServer();
-    const scanner = mockScanner({});
-    registerRefreshTool(server, scanner);
+    const manager = mockManager({});
+    registerRefreshTool(server, manager);
 
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_refresh;
@@ -58,51 +58,51 @@ describe('registerRefreshTool', () => {
     expect(tool.annotations?.destructiveHint).toBe(false);
   });
 
-  it('calls scanner.scan() when invoked', async () => {
+  it('calls manager.refresh() when invoked', async () => {
     const server = createServer();
-    const scanner = mockScanner({});
-    registerRefreshTool(server, scanner);
+    const manager = mockManager({});
+    registerRefreshTool(server, manager);
 
     await getHandler(server)({});
-    expect(scanner.scan).toHaveBeenCalled();
+    expect(manager.refresh).toHaveBeenCalled();
   });
 
   it('reports connected variants in result', async () => {
     const server = createServer();
-    const scanner = mockScanner({
+    const manager = mockManager({
       dev: {
         port: 3400,
         status: 'connected',
         tools: ['dev__foo', 'dev__bar'],
       },
     });
-    registerRefreshTool(server, scanner);
+    registerRefreshTool(server, manager);
 
     const result = await getHandler(server)({});
     const text = result.content[0].text;
-    expect(text).toContain('Scan complete');
+    expect(text).toContain('Refresh complete');
     expect(text).toContain('dev');
     expect(text).toContain('connected');
     expect(text).toContain('2 tools');
   });
 
-  it('reports not_detected variants', async () => {
+  it('reports not_running variants', async () => {
     const server = createServer();
-    const scanner = mockScanner({
-      stable: { port: 3200, status: 'not_detected', tools: [] },
+    const manager = mockManager({
+      stable: { port: 3200, status: 'not_running', tools: [] },
     });
-    registerRefreshTool(server, scanner);
+    registerRefreshTool(server, manager);
 
     const result = await getHandler(server)({});
-    expect(result.content[0].text).toContain('not detected');
+    expect(result.content[0].text).toContain('not running');
   });
 
   it('reports connecting variants', async () => {
     const server = createServer();
-    const scanner = mockScanner({
+    const manager = mockManager({
       dev: { port: 3400, status: 'connecting', tools: [] },
     });
-    registerRefreshTool(server, scanner);
+    registerRefreshTool(server, manager);
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('connecting...');
@@ -110,10 +110,10 @@ describe('registerRefreshTool', () => {
 
   it('reports disconnected variants', async () => {
     const server = createServer();
-    const scanner = mockScanner({
+    const manager = mockManager({
       dev: { port: 3400, status: 'disconnected', tools: [] },
     });
-    registerRefreshTool(server, scanner);
+    registerRefreshTool(server, manager);
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('disconnected (reconnecting)');
@@ -122,10 +122,10 @@ describe('registerRefreshTool', () => {
   it('includes installed variants when found', async () => {
     vi.mocked(findKunobiVariants).mockReturnValue(['Kunobi', 'Kunobi Dev']);
     const server = createServer();
-    const scanner = mockScanner({
+    const manager = mockManager({
       dev: { port: 3400, status: 'connected', tools: [] },
     });
-    registerRefreshTool(server, scanner);
+    registerRefreshTool(server, manager);
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('Installed on system');

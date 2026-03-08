@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG_PATH, loadConfig, saveConfig } from './config.js';
-import { probeKunobiServer } from './discovery.js';
+import { inspectKunobiServer } from './discovery.js';
 
 export async function runList(): Promise<void> {
   const config = loadConfig();
@@ -10,7 +10,7 @@ export async function runList(): Promise<void> {
 
   const results = await Promise.all(
     entries.map(async ([name, port]) => {
-      const result = await probeKunobiServer(`http://127.0.0.1:${port}/mcp`);
+      const result = await inspectKunobiServer(`http://127.0.0.1:${port}/mcp`);
       return {
         name,
         port,
@@ -23,7 +23,7 @@ export async function runList(): Promise<void> {
   for (const { name, port, connected, tools } of results) {
     const status = connected
       ? `\x1b[32m● connected (${tools} tools)\x1b[0m`
-      : '\x1b[90m○ not detected\x1b[0m';
+      : '\x1b[90m○ not running\x1b[0m';
     console.log(`  ${name.padEnd(12)} :${String(port).padEnd(6)} ${status}`);
   }
 

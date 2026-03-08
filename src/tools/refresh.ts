@@ -1,10 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { findKunobiVariants } from '../discovery.js';
-import type { VariantScanner } from '../scanner.js';
+import type { VariantManager } from '../manager.js';
 
-function formatRefreshResult(scanner: VariantScanner): string {
-  const states = scanner.getStates();
-  const lines: string[] = ['Scan complete. Current status:'];
+function formatRefreshResult(manager: VariantManager): string {
+  const states = manager.getStates();
+  const lines: string[] = ['Refresh complete. Current status:'];
 
   for (const [variant, state] of states) {
     const icon = state.status === 'connected' ? '✓' : '✗';
@@ -15,7 +15,7 @@ function formatRefreshResult(scanner: VariantScanner): string {
           ? 'connecting...'
           : state.status === 'disconnected'
             ? 'disconnected (reconnecting)'
-            : 'not detected';
+            : 'not running';
     lines.push(
       `  ${icon} ${variant.padEnd(10)} (port ${state.port}) — ${detail}`,
     );
@@ -31,13 +31,13 @@ function formatRefreshResult(scanner: VariantScanner): string {
 
 export function registerRefreshTool(
   server: McpServer,
-  scanner: VariantScanner,
+  manager: VariantManager,
 ): void {
   server.registerTool(
     'kunobi_refresh',
     {
       description:
-        'Force an immediate rescan of all Kunobi variant ports. Use this after launching Kunobi or when kunobi_status shows stale data. Returns the fresh connection status for all variants.',
+        'Force an immediate reconnect attempt across all configured Kunobi variants. Use this after launching Kunobi or when kunobi_status shows stale data. Returns the fresh connection status for all variants.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -45,10 +45,10 @@ export function registerRefreshTool(
       },
     },
     async () => {
-      await scanner.scan();
+      await manager.refresh();
       return {
         content: [
-          { type: 'text' as const, text: formatRefreshResult(scanner) },
+          { type: 'text' as const, text: formatRefreshResult(manager) },
         ],
       };
     },

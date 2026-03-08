@@ -65,12 +65,12 @@ If you prefer manual setup, add the following to your client's MCP config:
 ```
 AI assistant <--stdio--> @kunobi/mcp <--HTTP--> Kunobi variants
                           │
-                          ├── scans ports every 5s
-                          ├── confirms Kunobi identity via serverInfo
+                          ├── keeps one MCP connection per configured variant
+                          ├── retries disconnected variants every 5s
                           └── manages one bundler per variant
 ```
 
-The server periodically probes known ports for running Kunobi instances. When a variant is detected, its tools are registered with a `variant__` prefix (e.g., `dev__list_clusters`, `stable__query_store`). When a variant stops, its tools are automatically removed.
+The server keeps a persistent MCP connection for each configured Kunobi variant. When a variant is available, its tools are registered with a `variant__` prefix (e.g., `dev__list_clusters`, `stable__query_store`). When a variant stops, its tools are automatically removed, and the hub retries in the background unless auto-connect is disabled.
 
 ### Multi-variant support
 
@@ -93,7 +93,16 @@ These are always available, even when no Kunobi instance is running:
 
 - **`kunobi_status`** — reports all variant connection states, ports, and tool counts
 - **`kunobi_launch`** — launches a Kunobi variant by name
-- **`kunobi_refresh`** — forces an immediate rescan of all variant ports
+- **`kunobi_refresh`** — forces an immediate reconnect attempt across all configured variants
+- **`kunobi_call`** — stable entrypoint for variant tools (`variant`, `tool`, `arguments`)
+
+### Recommended calling pattern
+
+Use the stable path below for the most reliable MCP client behavior:
+
+1. Call `kunobi_status`
+2. Read `kunobi://tools` to discover full downstream tool schemas and metadata
+3. Execute via `kunobi_call(variant, tool, arguments)`
 
 ### Dynamic tools
 
@@ -104,13 +113,16 @@ When a Kunobi variant is detected, its tools appear automatically with a variant
 
 Tools appear and disappear dynamically as variants start and stop — no MCP server restart needed.
 
+These dynamic `variant__tool` entries are still supported, but some MCP clients may not refresh dynamic tool lists reliably. Use `kunobi_call` as the primary path when in doubt.
+
 ### Resources
 
-Resources exposed by Kunobi variants are proxied through automatically. When a variant connects, its resources become available to the AI client.
+Resources exposed by Kunobi variants are proxied through automatically. When a variant connects, its resources become available to the AI client with variant-namespaced URIs to avoid collisions between multiple running variants.
 
 The server also provides a built-in resource:
 
 - **`kunobi://status`** — JSON snapshot of all variant connection states, ports, and capability counts. Supports subscriptions — clients receive `notifications/resources/updated` whenever variants connect or disconnect.
+- **`kunobi://tools`** — JSON discovery document listing each variant status plus full downstream tool, resource, and prompt metadata for `kunobi_call`.
 
 ### Prompts
 
@@ -137,12 +149,11 @@ kunobi-mcp remove juan
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `MCP_KUNOBI_INTERVAL` | `5000` | Scan interval in ms |
-| `MCP_KUNOBI_PORTS` | — | `name:port` pairs to merge (e.g., `juan:4200,test:5000`) or bare ports to filter (legacy: `3400,3500`) |
-| `MCP_KUNOBI_ENABLED` | `true` | Set `false` to disable scanning |
-| `MCP_KUNOBI_MISS_THRESHOLD` | `3` | Consecutive scan misses before removing a variant |
+| `MCP_KUNOBI_RECONNECT_INTERVAL_MS` | `5000` | Reconnect interval in ms |
+| `MCP_KUNOBI_VARIANTS` | — | `name:port` pairs to merge (e.g., `juan:4200,test:5000`) |
+| `MCP_KUNOBI_AUTO_CONNECT` | `true` | Set `false` to disable automatic background connections. `kunobi_refresh` still works for manual retries. |
 
-Priority: config file defaults → `MCP_KUNOBI_PORTS` env var (merges on top).
+Priority: config file defaults → `MCP_KUNOBI_VARIANTS` env var (merges on top).
 
 ## CLI
 

@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it } from 'vitest';
-import type { VariantScanner, VariantState } from '../scanner.js';
+import type { VariantManager, VariantState } from '../manager.js';
+import { registerCallTool } from '../tools/call.js';
 import { registerLaunchTool } from '../tools/launch.js';
 import { registerRefreshTool } from '../tools/refresh.js';
 import { registerStatusTool } from '../tools/status.js';
@@ -33,18 +34,18 @@ function createServer(): McpServer {
   );
 }
 
-function mockScanner(states: Record<string, VariantState>): VariantScanner {
+function mockManager(states: Record<string, VariantState>): VariantManager {
   return {
     getStates: () => new Map(Object.entries(states)),
-    scan: async () => {},
-  } as unknown as VariantScanner;
+    refresh: async () => {},
+  } as unknown as VariantManager;
 }
 
 describe('built-in tools registration', () => {
   it('kunobi_status has correct annotations', () => {
     const server = createServer();
-    const scanner = mockScanner({});
-    registerStatusTool(server, scanner);
+    const manager = mockManager({});
+    registerStatusTool(server, manager);
 
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_status;
@@ -65,8 +66,8 @@ describe('built-in tools registration', () => {
 
   it('kunobi_refresh is registered with correct annotations', () => {
     const server = createServer();
-    const scanner = mockScanner({});
-    registerRefreshTool(server, scanner);
+    const manager = mockManager({});
+    registerRefreshTool(server, manager);
 
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_refresh;
@@ -74,12 +75,22 @@ describe('built-in tools registration', () => {
     expect(tool.annotations?.readOnlyHint).toBe(true);
     expect(tool.annotations?.destructiveHint).toBe(false);
   });
+
+  it('kunobi_call is registered', () => {
+    const server = createServer();
+    const manager = mockManager({});
+    registerCallTool(server, manager);
+
+    const tool = (server as unknown as ServerInternals)._registeredTools
+      .kunobi_call;
+    expect(tool).toBeDefined();
+  });
 });
 
 describe('resource registration', () => {
   it('kunobi_status resource can be registered', () => {
     const server = createServer();
-    const scanner = mockScanner({});
+    const manager = mockManager({});
 
     server.registerResource(
       'kunobi_status',
@@ -90,7 +101,7 @@ describe('resource registration', () => {
       },
       async () => {
         const states: Record<string, unknown> = {};
-        for (const [variant, state] of scanner.getStates()) {
+        for (const [variant, state] of manager.getStates()) {
           states[variant] = state;
         }
         return {
@@ -108,5 +119,52 @@ describe('resource registration', () => {
     const resources = (server as unknown as ServerInternals)
       ._registeredResources;
     expect(resources['kunobi://status']).toBeDefined();
+  });
+
+  it('kunobi_tools resource can be registered', () => {
+    const server = createServer();
+    const manager = mockManager({
+      dev: {
+        port: 3400,
+        status: 'connected',
+        tools: ['dev__k8s', 'dev__store'],
+      },
+    });
+
+    server.registerResource(
+      'kunobi_tools',
+      'kunobi://tools',
+      {
+        description: 'Stable discovery resource for variant tools',
+        mimeType: 'application/json',
+      },
+      async () => {
+        const variants: Record<string, unknown> = {};
+        for (const [variant, state] of manager.getStates()) {
+          variants[variant] = {
+            port: state.port,
+            status: state.status,
+            tools: state.tools.map((name) =>
+              name.startsWith(`${variant}__`)
+                ? name.slice(`${variant}__`.length)
+                : name,
+            ),
+          };
+        }
+        return {
+          contents: [
+            {
+              uri: 'kunobi://tools',
+              mimeType: 'application/json',
+              text: JSON.stringify({ variants }, null, 2),
+            },
+          ],
+        };
+      },
+    );
+
+    const resources = (server as unknown as ServerInternals)
+      ._registeredResources;
+    expect(resources['kunobi://tools']).toBeDefined();
   });
 });

@@ -3,8 +3,14 @@
 import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { findKunobiVariants, getScanConfig, launchHint } from './discovery.js';
-import { VariantScanner } from './scanner.js';
+import { buildDiscoveryCatalog } from './catalog.js';
+import {
+  findKunobiVariants,
+  getConnectionConfig,
+  launchHint,
+} from './discovery.js';
+import { VariantManager } from './manager.js';
+import { registerCallTool } from './tools/call.js';
 import { registerLaunchTool } from './tools/launch.js';
 import { registerRefreshTool } from './tools/refresh.js';
 import { registerStatusTool } from './tools/status.js';
@@ -31,11 +37,9 @@ Configuration:
   Config file: ~/.config/kunobi/mcp.json (auto-generated on first run)
 
 Environment:
-  MCP_KUNOBI_INTERVAL       Scan interval in ms (default: 5000)
-  MCP_KUNOBI_PORTS          name:port pairs to merge (e.g. juan:4200,test:5000)
-                             or bare port numbers to filter (legacy: 3400,3500)
-  MCP_KUNOBI_ENABLED        Set "false" to disable scanning
-  MCP_KUNOBI_MISS_THRESHOLD Misses before teardown (default: 3)`;
+  MCP_KUNOBI_RECONNECT_INTERVAL_MS   Reconnect interval in ms (default: 5000)
+  MCP_KUNOBI_VARIANTS                name:port pairs to merge (e.g. juan:4200,test:5000)
+  MCP_KUNOBI_AUTO_CONNECT            Set "false" to disable automatic background connections`;
 
 if (arg === '--help' || arg === '-h') {
   console.log(HELP);
@@ -92,7 +96,7 @@ if (arg === 'uninstall' || arg === '--uninstall' || arg === '-u') {
   process.exit(0);
 }
 
-const scanConfig = getScanConfig();
+const connectionConfig = getConnectionConfig();
 
 const server = new McpServer(
   { name: 'kunobi', version },
@@ -110,25 +114,29 @@ const server = new McpServer(
       '',
       'If Kunobi is not installed, it can be downloaded from https://kunobi.ninja/downloads',
       '',
-      'Configuration: Variant ports are loaded from ~/.config/kunobi/mcp.json (auto-generated). Custom variants can be added by editing this file or setting MCP_KUNOBI_PORTS env var with name:port pairs.',
+      'Configuration: Variant ports are loaded from ~/.config/kunobi/mcp.json (auto-generated). Custom variants can be added by editing this file or setting MCP_KUNOBI_VARIANTS with name:port pairs.',
       '',
-      'Available hub tools:',
-      "- kunobi_status: Check which variants are connected and when the last scan occurred. Call this first to understand what's available.",
+      'Available stable hub tools:',
+      "- kunobi_status: Check which variants are connected, their reconnect state, and whether automatic background connections are enabled. Call this first to understand what's available.",
       '- kunobi_launch: Start the Kunobi desktop app if no variants are detected.',
-      '- kunobi_refresh: Force an immediate rescan of all variant ports. Use after launching Kunobi or when kunobi_status shows stale data.',
+      '- kunobi_refresh: Force an immediate reconnect attempt across all configured variants. Use after launching Kunobi or when kunobi_status shows stale data.',
+      '- kunobi_call: Stable entrypoint to call variant tools via (variant, tool, arguments).',
+      '- kunobi://tools (resource): Discover full downstream tool metadata, schemas, prompts, and resources per variant.',
       '',
-      'Typical workflow:',
+      'Recommended workflow:',
       "1. Call kunobi_status to see what's connected",
       '2. If nothing is connected, call kunobi_launch then kunobi_refresh',
-      '3. Use the variant-prefixed tools (e.g. stable__get_pod_logs) for operations',
+      '3. Read kunobi://tools to discover downstream tool schemas and metadata',
+      '4. Use kunobi_call for operations (primary stable path)',
+      '5. Direct variant-prefixed tools (e.g. stable__get_pod_logs) are optional and may not refresh in all clients',
     ].join('\n'),
   },
 );
 
-const scanner = new VariantScanner(server, {
-  ports: scanConfig.ports,
-  intervalMs: scanConfig.intervalMs,
-  missThreshold: scanConfig.missThreshold,
+const manager = new VariantManager(server, {
+  ports: connectionConfig.ports,
+  reconnectIntervalMs: connectionConfig.reconnectIntervalMs,
+  autoReconnect: connectionConfig.autoConnect,
   logger: (level, message) => {
     if (level === 'error' || level === 'warn') {
       server.server
@@ -142,9 +150,10 @@ const scanner = new VariantScanner(server, {
   },
 });
 
-registerStatusTool(server, scanner);
-registerRefreshTool(server, scanner);
+registerStatusTool(server, manager);
+registerRefreshTool(server, manager);
 registerLaunchTool(server);
+registerCallTool(server, manager);
 
 // Resource: passive way for the LLM to check Kunobi state
 server.registerResource(
@@ -156,7 +165,7 @@ server.registerResource(
   },
   async () => {
     const states: Record<string, unknown> = {};
-    for (const [variant, state] of scanner.getStates()) {
+    for (const [variant, state] of manager.getStates()) {
       states[variant] = state;
     }
     return {
@@ -168,11 +177,33 @@ server.registerResource(
             {
               variants: states,
               installedVariants: findKunobiVariants(),
-              scanInterval: scanConfig.intervalMs,
+              autoConnect: connectionConfig.autoConnect,
+              reconnectIntervalMs: connectionConfig.reconnectIntervalMs,
             },
             null,
             2,
           ),
+        },
+      ],
+    };
+  },
+);
+
+server.registerResource(
+  'kunobi_tools',
+  'kunobi://tools',
+  {
+    description:
+      'Stable discovery resource for full downstream tool metadata and kunobi_call usage',
+    mimeType: 'application/json',
+  },
+  async () => {
+    return {
+      contents: [
+        {
+          uri: 'kunobi://tools',
+          mimeType: 'application/json',
+          text: JSON.stringify(buildDiscoveryCatalog(manager), null, 2),
         },
       ],
     };
@@ -184,7 +215,7 @@ server.registerPrompt(
   'kunobi-setup',
   { description: 'Check Kunobi status and provide setup instructions' },
   async () => {
-    const states = scanner.getStates();
+    const states = manager.getStates();
     const connected = [...states.entries()].filter(
       ([, s]) => s.status === 'connected',
     );
@@ -197,7 +228,7 @@ server.registerPrompt(
         .join(', ');
       instructions = `Kunobi is connected. Active variants: ${summary}.${installed.length > 0 ? ` Installed: ${installed.join(', ')}.` : ''}`;
     } else if (installed.length > 0) {
-      instructions = `Kunobi is installed but no variants are running (found: ${installed.join(', ')}). ${launchHint()} Use kunobi_launch to start it, then kunobi_refresh to detect it immediately.`;
+      instructions = `Kunobi is installed but no variants are running (found: ${installed.join(', ')}). ${launchHint()} Use kunobi_launch to start it, then kunobi_refresh to connect immediately.${connectionConfig.autoConnect ? '' : ' Automatic background connections are currently disabled.'}`;
     } else {
       instructions =
         'Kunobi is not installed. Download it from https://kunobi.ninja/downloads and install it on your system.';
@@ -221,7 +252,7 @@ server.registerPrompt(
     description: 'Diagnose why Kunobi tools are unavailable and suggest fixes',
   },
   async () => {
-    const states = scanner.getStates();
+    const states = manager.getStates();
     const installed = findKunobiVariants();
     const steps: string[] = [];
 
@@ -243,7 +274,7 @@ server.registerPrompt(
     if (connected.length === 0 && disconnected.length === 0) {
       if (installed.length === 0) {
         steps.push(
-          'No Kunobi variants detected.',
+          'No Kunobi variants are running.',
           '1. Download Kunobi from https://kunobi.ninja/downloads',
           '2. Install and launch the application',
           '3. Enable MCP in Kunobi Settings',
@@ -252,17 +283,25 @@ server.registerPrompt(
         steps.push(
           `Kunobi is installed (${installed.join(', ')}) but no variants are running.`,
           `1. ${launchHint()} Or call kunobi_launch.`,
-          '2. Call kunobi_refresh to detect the new instance immediately',
+          '2. Call kunobi_refresh to attempt a connection immediately',
           '3. Tools will appear automatically once connected',
         );
       }
     }
 
+    if (!connectionConfig.autoConnect) {
+      steps.push(
+        '',
+        'Automatic background connections are disabled via MCP_KUNOBI_AUTO_CONNECT=false.',
+        'Call kunobi_refresh whenever you want to retry the configured Kunobi variants.',
+      );
+    }
+
     steps.push(
       '',
-      `Scanning ports: ${[...states.entries()].map(([v, s]) => `${v}:${s.port}`).join(', ')}`,
+      `Configured variant ports: ${[...states.entries()].map(([v, s]) => `${v}:${s.port}`).join(', ')}`,
     );
-    steps.push(`Scan interval: ${scanConfig.intervalMs}ms`);
+    steps.push(`Reconnect interval: ${connectionConfig.reconnectIntervalMs}ms`);
 
     return {
       messages: [
@@ -278,8 +317,18 @@ server.registerPrompt(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-// Start scanning — non-blocking, bundlers connect in background
-scanner.start();
+if (connectionConfig.autoConnect) {
+  // Start the background connection manager after the MCP session is ready.
+  manager.start();
+} else {
+  server.server
+    .sendLoggingMessage({
+      level: 'warning',
+      logger: 'kunobi-mcp',
+      data: 'Automatic background connections are disabled via MCP_KUNOBI_AUTO_CONNECT=false. Use kunobi_refresh to connect manually.',
+    })
+    .catch(() => {});
+}
 
 // Graceful shutdown — close bundlers and transport on termination
 let shuttingDown = false;
@@ -288,7 +337,7 @@ async function shutdown() {
   shuttingDown = true;
   const timeout = setTimeout(() => process.exit(1), 5_000);
   try {
-    await scanner.stop();
+    await manager.stop();
     await server.close();
   } catch {
     // Failing shutdown must not prevent exit

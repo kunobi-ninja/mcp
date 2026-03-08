@@ -48,45 +48,33 @@ export function getLaunchCommand(
 
 export const DEFAULT_VARIANT_PORTS = CONFIG_DEFAULTS.variants;
 
-export interface ScanConfig {
+export interface ConnectionConfig {
   ports: Record<string, number>;
-  intervalMs: number;
-  missThreshold: number;
-  enabled: boolean;
+  reconnectIntervalMs: number;
+  autoConnect: boolean;
 }
 
-export function getScanConfig(): ScanConfig {
-  const enabled = process.env.MCP_KUNOBI_ENABLED !== 'false';
-  const intervalMs = Number(process.env.MCP_KUNOBI_INTERVAL) || 5000;
-  const missThreshold = Number(process.env.MCP_KUNOBI_MISS_THRESHOLD) || 3;
+export function getConnectionConfig(): ConnectionConfig {
+  const autoConnect = process.env.MCP_KUNOBI_AUTO_CONNECT !== 'false';
+  const reconnectIntervalMs =
+    Number(process.env.MCP_KUNOBI_RECONNECT_INTERVAL_MS) || 5000;
 
   const config = loadConfig();
-  let ports = { ...config.variants };
+  const ports = { ...config.variants };
 
-  const portsEnv = process.env.MCP_KUNOBI_PORTS;
-  if (portsEnv) {
-    const entries = portsEnv.split(',').map((p) => p.trim());
-    const hasNamedEntries = entries.some((e) => e.includes(':'));
-
-    if (hasNamedEntries) {
-      // New format: name:port pairs — merge on top
-      for (const entry of entries) {
-        const [name, portStr] = entry.split(':');
-        const port = Number(portStr);
-        if (name && !Number.isNaN(port)) {
-          ports[name] = port;
-        }
+  const variantsEnv = process.env.MCP_KUNOBI_VARIANTS;
+  if (variantsEnv) {
+    const entries = variantsEnv.split(',').map((entry) => entry.trim());
+    for (const entry of entries) {
+      const [name, portStr] = entry.split(':');
+      const port = Number(portStr);
+      if (name && !Number.isNaN(port)) {
+        ports[name] = port;
       }
-    } else {
-      // Legacy format: bare port numbers — filter
-      const allowed = new Set(entries.map((p) => Number(p)));
-      ports = Object.fromEntries(
-        Object.entries(ports).filter(([, port]) => allowed.has(port)),
-      );
     }
   }
 
-  return { ports, intervalMs, missThreshold, enabled };
+  return { ports, reconnectIntervalMs, autoConnect };
 }
 
 const KUNOBI_VARIANTS = ['', ' Dev', ' Unstable', ' E2E', ' Local'] as const;
@@ -147,7 +135,7 @@ export function findKunobiVariants(): string[] {
 
 /**
  * Parse a response body that may be plain JSON or SSE-formatted (`data: {...}`).
- * Older Kunobi builds return SSE even for the probe endpoint.
+ * Older Kunobi builds return SSE even for this inspection endpoint.
  */
 export async function parseJsonOrSse<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -160,19 +148,19 @@ export async function parseJsonOrSse<T>(response: Response): Promise<T> {
   return JSON.parse(trimmed) as T;
 }
 
-const PROBE_HEADERS = {
+const INSPECTION_HEADERS = {
   'Content-Type': 'application/json',
   Accept: 'application/json, text/event-stream',
   'X-Kunobi-Client': '@kunobi/mcp',
 };
 
-export async function probeKunobiServer(
+export async function inspectKunobiServer(
   url: string,
 ): Promise<{ tools: string[]; serverName: string } | null> {
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: PROBE_HEADERS,
+      headers: INSPECTION_HEADERS,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -180,7 +168,7 @@ export async function probeKunobiServer(
         params: {
           protocolVersion: LATEST_PROTOCOL_VERSION,
           capabilities: {},
-          clientInfo: { name: 'kunobi-mcp-probe', version: '0.0.1' },
+          clientInfo: { name: 'kunobi-mcp-inspector', version: '0.0.1' },
         },
       }),
       signal: AbortSignal.timeout(3_000),
@@ -194,7 +182,7 @@ export async function probeKunobiServer(
     if (!serverName.toLowerCase().includes('kunobi')) return null;
 
     const sessionHeaders = {
-      ...PROBE_HEADERS,
+      ...INSPECTION_HEADERS,
       ...(response.headers.has('mcp-session-id')
         ? { 'mcp-session-id': response.headers.get('mcp-session-id') ?? '' }
         : {}),

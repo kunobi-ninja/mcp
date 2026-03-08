@@ -1,10 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { DEFAULT_CONFIG_PATH } from '../config.js';
 import { findKunobiVariants } from '../discovery.js';
-import type { VariantScanner } from '../scanner.js';
+import type { VariantManager } from '../manager.js';
 
-function formatMultiStatus(scanner: VariantScanner): string {
-  const states = scanner.getStates();
+function formatMultiStatus(manager: VariantManager): string {
+  const states = manager.getStates();
   const lines: string[] = [
     'Kunobi MCP Hub Status',
     '─────────────────────',
@@ -20,7 +20,7 @@ function formatMultiStatus(scanner: VariantScanner): string {
           ? 'connecting...'
           : state.status === 'disconnected'
             ? 'disconnected (reconnecting)'
-            : 'not detected';
+            : 'not running';
     lines.push(
       `  ${icon} ${variant.padEnd(10)} (port ${state.port}) — ${detail}`,
     );
@@ -31,11 +31,21 @@ function formatMultiStatus(scanner: VariantScanner): string {
     lines.push('', `Installed on system: ${installed.join(', ')}`);
   }
 
-  const lastScan = scanner.getLastScanTime();
-  if (lastScan) {
-    const agoMs = Date.now() - lastScan.getTime();
+  const lastRefresh = manager.getLastRefreshTime();
+  if (lastRefresh) {
+    const agoMs = Date.now() - lastRefresh.getTime();
     const agoSec = Math.round(agoMs / 1000);
-    lines.push(`Last scanned: ${agoSec}s ago`);
+    lines.push(`Last refresh: ${agoSec}s ago`);
+  }
+
+  if (manager.isRunning()) {
+    lines.push(
+      `Reconnect interval: ${Math.round(manager.getReconnectIntervalMs() / 1000)}s`,
+    );
+  } else {
+    lines.push(
+      'Auto-connect: disabled (call kunobi_refresh to connect manually)',
+    );
   }
 
   lines.push('', `Config: ${DEFAULT_CONFIG_PATH}`);
@@ -45,13 +55,13 @@ function formatMultiStatus(scanner: VariantScanner): string {
 
 export function registerStatusTool(
   server: McpServer,
-  scanner: VariantScanner,
+  manager: VariantManager,
 ): void {
   server.registerTool(
     'kunobi_status',
     {
       description:
-        "Check which Kunobi variants are currently connected to this hub. Reports each variant's port, connection status, available tools, and when the last scan occurred. Call this before using Kunobi tools to understand what's available.",
+        "Check which Kunobi variants are currently connected to this hub. Reports each variant's port, connection status, available tools, and reconnect timing. Call this before using Kunobi tools to understand what's available.",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -60,7 +70,7 @@ export function registerStatusTool(
     },
     async () => {
       return {
-        content: [{ type: 'text' as const, text: formatMultiStatus(scanner) }],
+        content: [{ type: 'text' as const, text: formatMultiStatus(manager) }],
       };
     },
   );

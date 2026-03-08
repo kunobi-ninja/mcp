@@ -35,11 +35,11 @@ vi.mock('../config.js', () => ({
 
 vi.mock('../discovery.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../discovery.js')>();
-  return { ...actual, probeKunobiServer: vi.fn().mockResolvedValue(null) };
+  return { ...actual, inspectKunobiServer: vi.fn().mockResolvedValue(null) };
 });
 
 import { runAdd, runList, runRemove } from '../cli.js';
-import { probeKunobiServer } from '../discovery.js';
+import { inspectKunobiServer } from '../discovery.js';
 
 describe('runList', () => {
   let logSpy: MockInstance;
@@ -56,7 +56,7 @@ describe('runList', () => {
   });
 
   it('displays header and config path', async () => {
-    vi.mocked(probeKunobiServer).mockResolvedValue(null);
+    vi.mocked(inspectKunobiServer).mockResolvedValue(null);
     await runList();
 
     const output = logSpy.mock.calls.map((c) => c[0]).join('\n');
@@ -64,8 +64,8 @@ describe('runList', () => {
     expect(output).toContain('Config:');
   });
 
-  it('shows connected status when probe succeeds', async () => {
-    vi.mocked(probeKunobiServer).mockResolvedValue({
+  it('shows connected status when endpoint inspection succeeds', async () => {
+    vi.mocked(inspectKunobiServer).mockResolvedValue({
       tools: ['tool1', 'tool2'],
       serverName: 'kunobi',
     });
@@ -76,16 +76,16 @@ describe('runList', () => {
     expect(output).toContain('2 tools');
   });
 
-  it('shows not detected when probe fails', async () => {
-    vi.mocked(probeKunobiServer).mockResolvedValue(null);
+  it('shows not running when endpoint inspection fails', async () => {
+    vi.mocked(inspectKunobiServer).mockResolvedValue(null);
     await runList();
 
     const output = logSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(output).toContain('not detected');
+    expect(output).toContain('not running');
   });
 
   it('sorts variants by port number', async () => {
-    vi.mocked(probeKunobiServer).mockResolvedValue(null);
+    vi.mocked(inspectKunobiServer).mockResolvedValue(null);
     await runList();
 
     const lines = logSpy.mock.calls.map((c) => c[0]);

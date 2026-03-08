@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock the config module so getScanConfig always starts from known defaults
+// Mock the config module so getConnectionConfig always starts from known defaults
 // regardless of what's in the real ~/.config/kunobi/mcp.json
 vi.mock('../config.js', () => ({
   CONFIG_DEFAULTS: {
@@ -29,10 +29,10 @@ vi.mock('../config.js', () => ({
 
 import {
   DEFAULT_VARIANT_PORTS,
-  getScanConfig,
+  getConnectionConfig,
+  inspectKunobiServer,
   launchHint,
   parseJsonOrSse,
-  probeKunobiServer,
 } from '../discovery.js';
 
 describe('DEFAULT_VARIANT_PORTS', () => {
@@ -48,15 +48,14 @@ describe('DEFAULT_VARIANT_PORTS', () => {
   });
 });
 
-describe('getScanConfig', () => {
+describe('getConnectionConfig', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
     for (const key of [
-      'MCP_KUNOBI_INTERVAL',
-      'MCP_KUNOBI_PORTS',
-      'MCP_KUNOBI_ENABLED',
-      'MCP_KUNOBI_MISS_THRESHOLD',
+      'MCP_KUNOBI_RECONNECT_INTERVAL_MS',
+      'MCP_KUNOBI_VARIANTS',
+      'MCP_KUNOBI_AUTO_CONNECT',
     ]) {
       savedEnv[key] = process.env[key];
       delete process.env[key];
@@ -71,37 +70,25 @@ describe('getScanConfig', () => {
   });
 
   it('returns defaults when no env vars are set', () => {
-    const config = getScanConfig();
+    const config = getConnectionConfig();
     expect(config.ports).toEqual(DEFAULT_VARIANT_PORTS);
-    expect(config.intervalMs).toBe(5000);
-    expect(config.missThreshold).toBe(3);
-    expect(config.enabled).toBe(true);
+    expect(config.reconnectIntervalMs).toBe(5000);
+    expect(config.autoConnect).toBe(true);
   });
 
-  it('respects MCP_KUNOBI_INTERVAL', () => {
-    process.env.MCP_KUNOBI_INTERVAL = '10000';
-    expect(getScanConfig().intervalMs).toBe(10000);
+  it('respects MCP_KUNOBI_RECONNECT_INTERVAL_MS', () => {
+    process.env.MCP_KUNOBI_RECONNECT_INTERVAL_MS = '10000';
+    expect(getConnectionConfig().reconnectIntervalMs).toBe(10000);
   });
 
-  it('respects MCP_KUNOBI_PORTS to filter variants', () => {
-    process.env.MCP_KUNOBI_PORTS = '3400,3500';
-    const config = getScanConfig();
-    expect(config.ports).toEqual({ dev: 3400, local: 3500 });
+  it('respects MCP_KUNOBI_AUTO_CONNECT=false', () => {
+    process.env.MCP_KUNOBI_AUTO_CONNECT = 'false';
+    expect(getConnectionConfig().autoConnect).toBe(false);
   });
 
-  it('respects MCP_KUNOBI_ENABLED=false', () => {
-    process.env.MCP_KUNOBI_ENABLED = 'false';
-    expect(getScanConfig().enabled).toBe(false);
-  });
-
-  it('respects MCP_KUNOBI_MISS_THRESHOLD', () => {
-    process.env.MCP_KUNOBI_MISS_THRESHOLD = '5';
-    expect(getScanConfig().missThreshold).toBe(5);
-  });
-
-  it('parses name:port format in MCP_KUNOBI_PORTS', () => {
-    process.env.MCP_KUNOBI_PORTS = 'juan:4200,test:5000';
-    const config = getScanConfig();
+  it('parses name:port format in MCP_KUNOBI_VARIANTS', () => {
+    process.env.MCP_KUNOBI_VARIANTS = 'juan:4200,test:5000';
+    const config = getConnectionConfig();
     expect(config.ports.juan).toBe(4200);
     expect(config.ports.test).toBe(5000);
     // defaults still present
@@ -109,17 +96,11 @@ describe('getScanConfig', () => {
   });
 
   it('name:port entries override same-named defaults', () => {
-    process.env.MCP_KUNOBI_PORTS = 'dev:9999';
-    const config = getScanConfig();
+    process.env.MCP_KUNOBI_VARIANTS = 'dev:9999';
+    const config = getConnectionConfig();
     expect(config.ports.dev).toBe(9999);
     // other defaults still present
     expect(config.ports.stable).toBe(3200);
-  });
-
-  it('bare numbers still filter (backward compat)', () => {
-    process.env.MCP_KUNOBI_PORTS = '3400,3500';
-    const config = getScanConfig();
-    expect(config.ports).toEqual({ dev: 3400, local: 3500 });
   });
 });
 
@@ -174,9 +155,9 @@ describe('parseJsonOrSse', () => {
   });
 });
 
-describe('probeKunobiServer', () => {
+describe('inspectKunobiServer', () => {
   it('returns null for unreachable port', async () => {
-    const result = await probeKunobiServer('http://127.0.0.1:19999/mcp');
+    const result = await inspectKunobiServer('http://127.0.0.1:19999/mcp');
     expect(result).toBeNull();
   });
 
@@ -191,7 +172,7 @@ describe('probeKunobiServer', () => {
       ),
     );
 
-    const result = await probeKunobiServer('http://127.0.0.1:3400/mcp');
+    const result = await inspectKunobiServer('http://127.0.0.1:3400/mcp');
     expect(result).toBeNull();
     globalThis.fetch = originalFetch;
   });
@@ -220,7 +201,7 @@ describe('probeKunobiServer', () => {
       );
     });
 
-    const result = await probeKunobiServer('http://127.0.0.1:3400/mcp');
+    const result = await inspectKunobiServer('http://127.0.0.1:3400/mcp');
     expect(result).not.toBeNull();
     expect(result?.serverName).toBe('kunobi-dev');
     expect(result?.tools).toEqual(['app_info', 'query_store']);
@@ -246,7 +227,7 @@ describe('probeKunobiServer', () => {
       return new Response('error', { status: 500 });
     });
 
-    const result = await probeKunobiServer('http://127.0.0.1:3200/mcp');
+    const result = await inspectKunobiServer('http://127.0.0.1:3200/mcp');
     expect(result).not.toBeNull();
     expect(result?.tools).toEqual([]);
     globalThis.fetch = originalFetch;
@@ -258,7 +239,7 @@ describe('probeKunobiServer', () => {
       .fn()
       .mockResolvedValue(new Response('error', { status: 500 }));
 
-    const result = await probeKunobiServer('http://127.0.0.1:3400/mcp');
+    const result = await inspectKunobiServer('http://127.0.0.1:3400/mcp');
     expect(result).toBeNull();
     globalThis.fetch = originalFetch;
   });
@@ -271,7 +252,7 @@ describe('probeKunobiServer', () => {
         new Response(JSON.stringify({ result: {} }), { status: 200 }),
       );
 
-    const result = await probeKunobiServer('http://127.0.0.1:3400/mcp');
+    const result = await inspectKunobiServer('http://127.0.0.1:3400/mcp');
     expect(result).toBeNull();
     globalThis.fetch = originalFetch;
   });
