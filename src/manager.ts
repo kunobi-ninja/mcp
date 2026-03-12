@@ -171,6 +171,23 @@ export class VariantManager {
   ): Promise<CallToolResult | null> {
     const tracked = this.tracked.get(variant);
     if (!tracked) return null;
+
+    const state = tracked.bundler.getState();
+    if (state !== 'connected') {
+      if (state === 'disconnected' || state === 'idle') {
+        void tracked.bundler.reconnectNow();
+      }
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `[${variant}] Not reachable (${state}). Automatic reconnect in progress — retry shortly or call kunobi_status to check connectivity.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
     return tracked.bundler.callTool(tool, args);
   }
 

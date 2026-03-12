@@ -446,6 +446,36 @@ describe('persistent bundler lifecycle', () => {
     expect(result?.content[0]?.text).toBe('k8s:{"action":"list"}');
   });
 
+  it('returns a user-friendly error when calling a disconnected variant', async () => {
+    bundlerControls.outcomes.set('dev', 'disconnected');
+
+    const server = createServer();
+    const manager = new VariantManager(server, {
+      ports: { dev: 3400 },
+      reconnectIntervalMs: 5000,
+    });
+
+    await manager.refresh();
+
+    const result = await manager.callVariantTool('dev', 'k8s', {
+      action: 'list',
+    });
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0]?.text).toContain('Not reachable');
+    expect(result?.content[0]?.text).toContain('kunobi_status');
+  });
+
+  it('still returns null for unknown variants', async () => {
+    const server = createServer();
+    const manager = new VariantManager(server, {
+      ports: { dev: 3400 },
+      reconnectIntervalMs: 5000,
+    });
+
+    const result = await manager.callVariantTool('unknown', 'k8s');
+    expect(result).toBeNull();
+  });
+
   it('notifies tools, resources, prompts, and status updates after a variant connects', async () => {
     bundlerControls.outcomes.set('dev', 'connected');
 
