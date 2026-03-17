@@ -70,7 +70,7 @@ AI assistant <--stdio--> @kunobi/mcp <--HTTP--> Kunobi variants
                           └── manages one bundler per variant
 ```
 
-The server keeps a persistent MCP connection for each configured Kunobi variant. When a variant is available, its tools are registered with a `variant__` prefix (e.g., `dev__list_clusters`, `stable__query_store`). When a variant stops, its tools are automatically removed, and the hub retries in the background unless auto-connect is disabled.
+The server keeps a persistent MCP connection for each configured Kunobi variant. When a variant is available, its tools are registered with a `variant__` prefix (e.g., `dev__list_clusters`, `stable__query_store`). When a variant briefly drops, the hub keeps the last-known surface stable while it reconnects in the background. If the disconnect outlives the reconnect grace window, the stale registrations are removed.
 
 ### Multi-variant support
 
@@ -111,7 +111,7 @@ When a Kunobi variant is detected, its tools appear automatically with a variant
 - `dev__app_info`, `dev__query_store`, `dev__list_stores`, ...
 - `stable__app_info`, `stable__query_store`, `stable__list_stores`, ...
 
-Tools appear and disappear dynamically as variants start and stop — no MCP server restart needed.
+Tools appear dynamically as variants start, and they are withdrawn only after a sustained disconnect — no MCP server restart needed.
 
 These dynamic `variant__tool` entries are still supported, but some MCP clients may not refresh dynamic tool lists reliably. Use `kunobi_call` as the primary path when in doubt.
 
@@ -119,7 +119,7 @@ These dynamic `variant__tool` entries are still supported, but some MCP clients 
 
 Resources exposed by Kunobi variants are proxied through automatically. When a variant connects, its resources become available to the AI client with variant-namespaced URIs to avoid collisions between multiple running variants.
 
-The server also provides a built-in resource:
+The server also provides built-in resources:
 
 - **`kunobi://status`** — JSON snapshot of all variant connection states, ports, and capability counts. Supports subscriptions — clients receive `notifications/resources/updated` whenever variants connect or disconnect.
 - **`kunobi://tools`** — JSON discovery document listing each variant status plus full downstream tool, resource, and prompt metadata for `kunobi_call`.

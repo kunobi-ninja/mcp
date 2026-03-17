@@ -104,4 +104,37 @@ describe('registerCallTool', () => {
       action: 'list',
     });
   });
+
+  it('delegates through the manager when a known variant is temporarily disconnected', async () => {
+    const server = createServer();
+    const callVariantTool = vi.fn().mockResolvedValue({
+      content: [{ type: 'text' as const, text: 'recovered:list' }],
+    });
+    const manager = mockManager(
+      {
+        dev: { port: 3400, status: 'disconnected', tools: [] },
+      },
+      callVariantTool,
+    );
+
+    registerCallTool(server, manager);
+    const tool = (server as unknown as ServerInternals)._registeredTools
+      .kunobi_call;
+
+    if (!tool) {
+      throw new Error('kunobi_call should be registered');
+    }
+
+    const result = await tool.handler({
+      variant: 'dev',
+      tool: 'k8s',
+      arguments: { action: 'list' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toBe('recovered:list');
+    expect(callVariantTool).toHaveBeenCalledWith('dev', 'k8s', {
+      action: 'list',
+    });
+  });
 });
