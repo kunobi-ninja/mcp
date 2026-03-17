@@ -33,42 +33,13 @@ export function registerCallTool(
     },
     async ({ variant, tool, arguments: args }) => {
       const states = manager.getStates();
-      const state = states.get(variant);
 
-      if (!state) {
+      if (!states.has(variant)) {
         return {
           content: [
             {
               type: 'text' as const,
               text: `Unknown variant "${variant}". Available variants: ${[...states.keys()].join(', ')}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      if (state.status !== 'connected') {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Variant "${variant}" is ${state.status}. Use kunobi_status/kunobi_refresh first.`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      const catalog = manager.getCatalog().get(variant);
-      const targetTool = catalog?.tools.find((entry) => entry.name === tool);
-
-      if (!targetTool) {
-        const available = catalog?.tools.map((entry) => entry.name).join(', ');
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Tool "${tool}" is not available on variant "${variant}". Available tools: ${available || '(none)'}`,
             },
           ],
           isError: true,

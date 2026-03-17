@@ -32,7 +32,12 @@ interface TrackedVariant {
   adapter: McpBundlerServerAdapter;
   bundler: McpBundler;
   port: number;
+  disconnectCleanupTimer: ReturnType<typeof setTimeout> | null;
 }
+
+const DISCONNECT_GRACE_MULTIPLIER = 2;
+const MIN_DISCONNECT_GRACE_MS = 1_000;
+const MAX_DISCONNECT_GRACE_MS = 30_000;
 
 function buildVariantResourceUri(variant: string, uri: string): string {
   return `kunobi://variant/${encodeURIComponent(variant)}/resource/${encodeURIComponent(uri)}`;
@@ -46,6 +51,7 @@ export class VariantManager {
   private readonly server: McpServer;
   private readonly ports: Record<string, number>;
   private readonly reconnectIntervalMs: number;
+  private readonly disconnectGraceMs: number;
   private readonly autoReconnect: boolean;
   private readonly logger: (
     level: string,
@@ -58,11 +64,20 @@ export class VariantManager {
   private refreshing = false;
   private lastRefreshTime: Date | null = null;
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingCapabilityNotifications = false;
+  private pendingResourceUpdates = false;
 
   constructor(server: McpServer, options: VariantManagerOptions) {
     this.server = server;
     this.ports = options.ports;
     this.reconnectIntervalMs = options.reconnectIntervalMs;
+    this.disconnectGraceMs = Math.min(
+      Math.max(
+        this.reconnectIntervalMs * DISCONNECT_GRACE_MULTIPLIER,
+        MIN_DISCONNECT_GRACE_MS,
+      ),
+      MAX_DISCONNECT_GRACE_MS,
+    );
     this.autoReconnect = options.autoReconnect ?? true;
     this.logger = options.logger ?? (() => {});
   }
@@ -87,17 +102,20 @@ export class VariantManager {
       clearTimeout(this.notifyTimer);
       this.notifyTimer = null;
     }
+    this.pendingCapabilityNotifications = false;
+    this.pendingResourceUpdates = false;
 
     const closeTasks = [...this.tracked.entries()].map(
-      async ([variant, { adapter, bundler }]) => {
+      async ([variant, tracked]) => {
         this.logger(
           'info',
           `[variant-manager] Stopping bundler for ${variant}`,
         );
-        adapter.unregisterTools(this.server);
-        adapter.unregisterResources(this.server);
-        adapter.unregisterPrompts(this.server);
-        await bundler.close();
+        this.clearDisconnectCleanupTimer(variant);
+        tracked.adapter.unregisterTools(this.server);
+        tracked.adapter.unregisterResources(this.server);
+        tracked.adapter.unregisterPrompts(this.server);
+        await tracked.bundler.close();
       },
     );
     await Promise.all(closeTasks);
@@ -169,25 +187,15 @@ export class VariantManager {
     tool: string,
     args: Record<string, unknown> = {},
   ): Promise<CallToolResult | null> {
-    const tracked = this.tracked.get(variant);
-    if (!tracked) return null;
-
-    const state = tracked.bundler.getState();
-    if (state !== 'connected') {
-      if (state === 'disconnected' || state === 'idle') {
-        void tracked.bundler.reconnectNow();
-      }
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: `[${variant}] Not reachable (${state}). Automatic reconnect in progress — retry shortly or call kunobi_status to check connectivity.`,
-          },
-        ],
-        isError: true,
-      };
+    let tracked = this.tracked.get(variant);
+    if (!tracked) {
+      const port = this.ports[variant];
+      if (port === undefined) return null;
+      await this.addVariant(variant, port);
+      tracked = this.tracked.get(variant);
     }
 
+    if (!tracked) return null;
     return tracked.bundler.callTool(tool, args);
   }
 
@@ -216,6 +224,45 @@ export class VariantManager {
     } finally {
       this.refreshing = false;
     }
+  }
+
+  private clearDisconnectCleanupTimer(variant: string): void {
+    const tracked = this.tracked.get(variant);
+    if (!tracked?.disconnectCleanupTimer) return;
+
+    clearTimeout(tracked.disconnectCleanupTimer);
+    tracked.disconnectCleanupTimer = null;
+  }
+
+  private scheduleDisconnectCleanup(variant: string): void {
+    const tracked = this.tracked.get(variant);
+    if (!tracked) return;
+
+    this.clearDisconnectCleanupTimer(variant);
+    tracked.disconnectCleanupTimer = setTimeout(() => {
+      tracked.disconnectCleanupTimer = null;
+
+      if (tracked.bundler.getState() === 'connected') {
+        return;
+      }
+
+      tracked.adapter.unregisterTools(this.server);
+      tracked.adapter.unregisterResources(this.server);
+      tracked.adapter.unregisterPrompts(this.server);
+      this.notifyChanged({ capabilitiesChanged: true, resourceUpdates: true });
+    }, this.disconnectGraceMs);
+  }
+
+  private async syncVariantRegistrations(
+    tracked: TrackedVariant,
+  ): Promise<void> {
+    tracked.adapter.unregisterTools(this.server);
+    tracked.adapter.unregisterResources(this.server);
+    tracked.adapter.unregisterPrompts(this.server);
+
+    await tracked.adapter.registerTools(this.server);
+    await tracked.adapter.registerResources(this.server);
+    await tracked.adapter.registerPrompts(this.server);
   }
 
   private async addVariant(variant: string, port: number): Promise<void> {
@@ -251,57 +298,77 @@ export class VariantManager {
       }),
     });
 
-    this.tracked.set(variant, { adapter, bundler, port });
+    const tracked: TrackedVariant = {
+      adapter,
+      bundler,
+      port,
+      disconnectCleanupTimer: null,
+    };
+
+    this.tracked.set(variant, tracked);
 
     bundler.on('connected', async () => {
-      await adapter.registerTools(this.server);
-      await adapter.registerResources(this.server);
-      await adapter.registerPrompts(this.server);
-      this.notifyChanged();
+      this.clearDisconnectCleanupTimer(variant);
+      await this.syncVariantRegistrations(tracked);
+      this.notifyChanged({ capabilitiesChanged: true, resourceUpdates: true });
     });
 
     bundler.on('disconnected', () => {
-      adapter.unregisterTools(this.server);
-      adapter.unregisterResources(this.server);
-      adapter.unregisterPrompts(this.server);
-      this.notifyChanged();
+      this.scheduleDisconnectCleanup(variant);
+      this.notifyChanged({ capabilitiesChanged: false, resourceUpdates: true });
     });
 
     bundler.on('tools_changed', async () => {
       adapter.unregisterTools(this.server);
       await adapter.registerTools(this.server);
-      this.notifyChanged();
+      this.notifyChanged({ capabilitiesChanged: true, resourceUpdates: true });
     });
 
     bundler.on('resources_changed', async () => {
       adapter.unregisterResources(this.server);
       await adapter.registerResources(this.server);
-      this.notifyChanged();
+      this.notifyChanged({ capabilitiesChanged: true, resourceUpdates: true });
     });
 
     bundler.on('prompts_changed', async () => {
       adapter.unregisterPrompts(this.server);
       await adapter.registerPrompts(this.server);
-      this.notifyChanged();
+      this.notifyChanged({ capabilitiesChanged: true, resourceUpdates: true });
     });
 
     await bundler.reconnectNow();
   }
 
-  private notifyChanged(): void {
+  private notifyChanged(
+    options: { capabilitiesChanged?: boolean; resourceUpdates?: boolean } = {},
+  ): void {
+    const { capabilitiesChanged = true, resourceUpdates = true } = options;
+    this.pendingCapabilityNotifications ||= capabilitiesChanged;
+    this.pendingResourceUpdates ||= resourceUpdates;
+
     if (this.notifyTimer) return;
     this.notifyTimer = setTimeout(() => {
       this.notifyTimer = null;
+
+      const shouldNotifyCapabilities = this.pendingCapabilityNotifications;
+      const shouldNotifyResources = this.pendingResourceUpdates;
+      this.pendingCapabilityNotifications = false;
+      this.pendingResourceUpdates = false;
+
       try {
-        this.server.server.sendToolListChanged().catch(() => {});
-        this.server.server.sendResourceListChanged().catch(() => {});
-        this.server.server.sendPromptListChanged().catch(() => {});
-        this.server.server
-          .sendResourceUpdated({ uri: 'kunobi://status' })
-          .catch(() => {});
-        this.server.server
-          .sendResourceUpdated({ uri: 'kunobi://tools' })
-          .catch(() => {});
+        if (shouldNotifyCapabilities) {
+          this.server.server.sendToolListChanged().catch(() => {});
+          this.server.server.sendResourceListChanged().catch(() => {});
+          this.server.server.sendPromptListChanged().catch(() => {});
+        }
+        if (shouldNotifyResources) {
+          this.server.server
+            .sendResourceUpdated({ uri: 'kunobi://status' })
+            .catch(() => {});
+          this.server.server
+            .sendResourceUpdated({ uri: 'kunobi://tools' })
+            .catch(() => {});
+        }
       } catch {
         // Client may not support notifications yet
       }

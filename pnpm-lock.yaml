@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@kunobi/mcp-bundler':
-        specifier: ^0.0.9
-        version: 0.0.9
+        specifier: ^0.0.10
+        version: 0.0.10
       '@kunobi/mcp-installer':
         specifier: ^0.0.6
         version: 0.0.6
@@ -310,8 +310,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kunobi/mcp-bundler@0.0.9':
-    resolution: {integrity: sha512-FnCpLDb58Vb+opHy+t9D1ofa7xDBrsilDBQ6GnVheuYjGiXL5NwUJK1MGjjR6YwM4t8khprAtXBDYfgQI2VhHw==}
+  '@kunobi/mcp-bundler@0.0.10':
+    resolution: {integrity: sha512-MJ85TUMY+vWzryberda6V3TG3aWQdN18N62xrKKP8NKkw0lNLNLcyC5mEfpNHewlOpxeidqrI1MCowqFzgRvkw==}
 
   '@kunobi/mcp-installer@0.0.6':
     resolution: {integrity: sha512-fH+Zv+57yl7C9sYfva4SKXfxYAZfrKdiXdl/ua3kwtxyqypF2M0YeWQ5K7lW3ot2sIIBpkGWxhEhP4wu0NnDVA==}
@@ -1326,7 +1326,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@kunobi/mcp-bundler@0.0.9':
+  '@kunobi/mcp-bundler@0.0.10':
     dependencies:
       '@modelcontextprotocol/sdk': 1.27.1(zod@4.3.6)
       zod: 4.3.6

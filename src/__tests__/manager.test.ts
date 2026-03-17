@@ -446,7 +446,7 @@ describe('persistent bundler lifecycle', () => {
     expect(result?.content[0]?.text).toBe('k8s:{"action":"list"}');
   });
 
-  it('returns a user-friendly error when calling a disconnected variant', async () => {
+  it('delegates calls even when the variant is currently disconnected', async () => {
     bundlerControls.outcomes.set('dev', 'disconnected');
 
     const server = createServer();
@@ -460,9 +460,7 @@ describe('persistent bundler lifecycle', () => {
     const result = await manager.callVariantTool('dev', 'k8s', {
       action: 'list',
     });
-    expect(result?.isError).toBe(true);
-    expect(result?.content[0]?.text).toContain('Not reachable');
-    expect(result?.content[0]?.text).toContain('kunobi_status');
+    expect(result?.content[0]?.text).toBe('k8s:{"action":"list"}');
   });
 
   it('still returns null for unknown variants', async () => {
@@ -474,6 +472,156 @@ describe('persistent bundler lifecycle', () => {
 
     const result = await manager.callVariantTool('unknown', 'k8s');
     expect(result).toBeNull();
+  });
+
+  it('keeps registrations intact during the disconnect grace window', async () => {
+    bundlerControls.outcomes.set('dev', 'connected');
+
+    const server = createServer();
+    const manager = new VariantManager(server, {
+      ports: { dev: 3400 },
+      reconnectIntervalMs: 5000,
+    });
+
+    await manager.refresh();
+
+    const bundler = bundlerControls.instances[0] as unknown as {
+      state: string;
+      emit: (event: string) => void;
+    };
+    const adapter = bundlerControls.adapterInstances[0];
+
+    const initialToolUnregistrations = adapter?.toolUnregistrations ?? 0;
+    const initialResourceUnregistrations =
+      adapter?.resourceUnregistrations ?? 0;
+    const initialPromptUnregistrations = adapter?.promptUnregistrations ?? 0;
+
+    bundler.state = 'disconnected';
+    bundler.emit('disconnected');
+
+    expect(adapter?.toolUnregistrations).toBe(initialToolUnregistrations);
+    expect(adapter?.resourceUnregistrations).toBe(
+      initialResourceUnregistrations,
+    );
+    expect(adapter?.promptUnregistrations).toBe(initialPromptUnregistrations);
+
+    await vi.advanceTimersByTimeAsync(9900);
+    expect(adapter?.toolUnregistrations).toBe(initialToolUnregistrations);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(adapter?.toolUnregistrations).toBe(initialToolUnregistrations + 1);
+    expect(adapter?.resourceUnregistrations).toBe(
+      initialResourceUnregistrations + 1,
+    );
+    expect(adapter?.promptUnregistrations).toBe(
+      initialPromptUnregistrations + 1,
+    );
+  });
+
+  it('re-syncs registrations and cancels pending disconnect cleanup when the variant reconnects quickly', async () => {
+    bundlerControls.outcomes.set('dev', 'connected');
+
+    const server = createServer();
+    const manager = new VariantManager(server, {
+      ports: { dev: 3400 },
+      reconnectIntervalMs: 5000,
+    });
+
+    await manager.refresh();
+
+    const bundler = bundlerControls.instances[0] as unknown as {
+      state: string;
+      emit: (event: string) => void;
+    };
+    const adapter = bundlerControls.adapterInstances[0];
+
+    const initialToolRegistrations = adapter?.toolRegistrations ?? 0;
+    const initialResourceRegistrations = adapter?.resourceRegistrations ?? 0;
+    const initialPromptRegistrations = adapter?.promptRegistrations ?? 0;
+    const initialToolUnregistrations = adapter?.toolUnregistrations ?? 0;
+    const initialResourceUnregistrations =
+      adapter?.resourceUnregistrations ?? 0;
+    const initialPromptUnregistrations = adapter?.promptUnregistrations ?? 0;
+
+    bundler.state = 'disconnected';
+    bundler.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(5000);
+
+    bundler.state = 'connected';
+    bundler.emit('connected');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(adapter?.toolRegistrations).toBe(initialToolRegistrations + 1);
+    expect(adapter?.resourceRegistrations).toBe(
+      initialResourceRegistrations + 1,
+    );
+    expect(adapter?.promptRegistrations).toBe(initialPromptRegistrations + 1);
+    expect(adapter?.toolUnregistrations).toBe(initialToolUnregistrations + 1);
+    expect(adapter?.resourceUnregistrations).toBe(
+      initialResourceUnregistrations + 1,
+    );
+    expect(adapter?.promptUnregistrations).toBe(
+      initialPromptUnregistrations + 1,
+    );
+
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(adapter?.toolUnregistrations).toBe(initialToolUnregistrations + 1);
+    expect(adapter?.resourceUnregistrations).toBe(
+      initialResourceUnregistrations + 1,
+    );
+    expect(adapter?.promptUnregistrations).toBe(
+      initialPromptUnregistrations + 1,
+    );
+  });
+
+  it('updates status resources immediately without flapping list notifications on transient disconnects', async () => {
+    bundlerControls.outcomes.set('dev', 'connected');
+
+    const server = createServer();
+    const sendToolListChanged = vi
+      .spyOn(server.server, 'sendToolListChanged')
+      .mockResolvedValue(undefined);
+    const sendResourceListChanged = vi
+      .spyOn(server.server, 'sendResourceListChanged')
+      .mockResolvedValue(undefined);
+    const sendPromptListChanged = vi
+      .spyOn(server.server, 'sendPromptListChanged')
+      .mockResolvedValue(undefined);
+    const sendResourceUpdated = vi
+      .spyOn(server.server, 'sendResourceUpdated')
+      .mockResolvedValue(undefined);
+
+    const manager = new VariantManager(server, {
+      ports: { dev: 3400 },
+      reconnectIntervalMs: 5000,
+    });
+
+    await manager.refresh();
+    await vi.advanceTimersByTimeAsync(150);
+    sendToolListChanged.mockClear();
+    sendResourceListChanged.mockClear();
+    sendPromptListChanged.mockClear();
+    sendResourceUpdated.mockClear();
+
+    const bundler = bundlerControls.instances[0] as unknown as {
+      state: string;
+      emit: (event: string) => void;
+    };
+    bundler.state = 'disconnected';
+    bundler.emit('disconnected');
+
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(sendToolListChanged).not.toHaveBeenCalled();
+    expect(sendResourceListChanged).not.toHaveBeenCalled();
+    expect(sendPromptListChanged).not.toHaveBeenCalled();
+    expect(sendResourceUpdated).toHaveBeenCalledWith({
+      uri: 'kunobi://status',
+    });
+    expect(sendResourceUpdated).toHaveBeenCalledWith({
+      uri: 'kunobi://tools',
+    });
   });
 
   it('notifies tools, resources, prompts, and status updates after a variant connects', async () => {
