@@ -317,6 +317,12 @@ server.registerPrompt(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
+// Exit when the parent process closes the stdio pipe (e.g. Codex drops the
+// connection without sending SIGTERM).  Without this, the VariantManager's
+// infinite-retry reconnect timers keep the event loop alive and the process
+// becomes an orphan.
+process.stdin.on('close', () => void shutdown());
+
 if (connectionConfig.autoConnect) {
   // Start the background connection manager after the MCP session is ready.
   manager.start();
