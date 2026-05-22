@@ -10,7 +10,7 @@ MCP bridge to [Kunobi](https://kunobi.ninja), a desktop platform management IDE.
 
 - Real-time cluster visibility with resource browser, YAML editor, and embedded terminal
 - Native FluxCD, ArgoCD, and Helm support
-- Built-in MCP server for AI assistants (Claude Code, Cursor, Windsurf, Codex CLI, Gemini CLI)
+- Built-in MCP server for AI assistants (Claude Code, Cursor, Windsurf, Codex CLI, Gemini CLI, GitHub Copilot CLI)
 - Available on macOS, Windows, and Linux
 - No account required, no cloud dependency
 
@@ -38,6 +38,7 @@ This interactively detects your installed AI clients and registers the server wi
 - **Windsurf** — project or user scope
 - **Codex CLI** — project or user scope
 - **Gemini CLI** — project or user scope
+- **GitHub Copilot CLI** — user scope
 
 To remove the server from all clients:
 
