@@ -1,2 +1,6 @@
 allowBuilds:
   esbuild: true
+
+# Override the CI image's supply-chain age policy: we depend on @kunobi/* packages
+# that we publish ourselves and may need to consume same-day.
+minimumReleaseAge: 0
