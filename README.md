@@ -61,6 +61,23 @@ This re-pins every client where Kunobi is registered to the newest version and
 warms the cache. **Restart your AI client** to load it (the new version takes
 effect on the next start).
 
+**Installed before pinning existed?** Pin your current version in place — no
+upgrade, no registry call:
+
+```bash
+npx @kunobi/mcp pin
+```
+
+If you ran an older build, the server also hints this on connect when it detects
+an unpinned config. Silence the hint with `MCP_KUNOBI_NO_PIN_HINT=1`.
+
+**Prefer always-latest?** Opt back out — each launch will resolve the newest
+version again (slower startup, and can stall on the registry):
+
+```bash
+npx @kunobi/mcp unpin
+```
+
 ### Manual
 
 If you prefer manual setup, add the following to your client's MCP config:
@@ -168,6 +185,7 @@ kunobi-mcp remove juan
 | `MCP_KUNOBI_RECONNECT_INTERVAL_MS` | `5000` | Reconnect interval in ms |
 | `MCP_KUNOBI_VARIANTS` | — | `name:port` pairs to merge (e.g., `juan:4200,test:5000`) |
 | `MCP_KUNOBI_AUTO_CONNECT` | `true` | Set `false` to disable automatic background connections. `kunobi_refresh` still works for manual retries. |
+| `MCP_KUNOBI_NO_PIN_HINT` | — | Set `1` to suppress the startup hint that suggests pinning an unpinned install. |
 
 Priority: config file defaults → `MCP_KUNOBI_VARIANTS` env var (merges on top).
 
@@ -184,6 +202,8 @@ kunobi-mcp [command] [options]
 | `remove <name>` | Remove a variant |
 | `install` | Register this MCP server with your AI clients (pinned to the current version) |
 | `uninstall` | Remove this MCP server from your AI clients |
+| `pin` | Pin your AI clients to the current version (faster, hang-proof startup) |
+| `unpin` | Revert to always-latest (`npx -y @kunobi/mcp`; slower startup) |
 | `upgrade` | Re-pin your AI clients to the latest published version (restart to apply) |
 | `--help`, `-h` | Show help message |
 | `--version`, `-v` | Show version number |

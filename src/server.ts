@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+import type { RepinResult } from '@kunobi/mcp-installer';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { buildDiscoveryCatalog } from './catalog.js';
@@ -18,6 +19,35 @@ import { registerStatusTool } from './tools/status.js';
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
 
+const PKG = '@kunobi/mcp';
+
+// Re-pin every client config where kunobi is registered to a given spec, and
+// report. `spec` is the npm spec used as the last npx arg: `@kunobi/mcp@<v>` to
+// pin, or bare `@kunobi/mcp` to unpin (always-latest). Shared by pin/unpin/upgrade.
+async function repinAll(
+  spec: string,
+  verb: string,
+): Promise<{ updated: RepinResult[]; failed: RepinResult[] }> {
+  const { repin } = await import('@kunobi/mcp-installer');
+  const results = repin({ name: 'kunobi', command: 'npx', args: ['-y', spec] });
+  const updated = results.filter((r) => r.action === 'updated');
+  const failed = results.filter((r) => r.action === 'error');
+
+  if (updated.length === 0 && failed.length === 0) {
+    console.error(
+      "kunobi is not registered in any AI client config. Run 'kunobi-mcp install' first.",
+    );
+    process.exit(1);
+  }
+  for (const r of updated) {
+    console.log(`${verb} ${r.client} (${r.scope}) — ${r.path}`);
+  }
+  for (const r of failed) {
+    console.error(`Failed: ${r.client} (${r.scope}): ${r.error}`);
+  }
+  return { updated, failed };
+}
+
 const arg = process.argv[2];
 const HELP = `Kunobi MCP server v${version} — connects AI assistants to the Kunobi desktop app.
 
@@ -26,9 +56,11 @@ Usage:
   kunobi-mcp list                   Show configured variants and connection status
   kunobi-mcp add <name> <port>      Add or update a variant
   kunobi-mcp remove <name>          Remove a variant
-  kunobi-mcp install                Register this MCP server with your AI clients
+  kunobi-mcp install                Register this MCP server with your AI clients (pinned)
   kunobi-mcp uninstall              Remove this MCP server from your AI clients
-  kunobi-mcp upgrade                Re-pin your AI clients to the latest version (restart to apply)
+  kunobi-mcp pin                    Pin your AI clients to the current version (faster, hang-proof startup)
+  kunobi-mcp unpin                  Revert to always-latest (npx -y @kunobi/mcp; slower startup)
+  kunobi-mcp upgrade                Re-pin your AI clients to the latest published version (restart to apply)
 
 Options:
   --help, -h          Show this help message
@@ -101,8 +133,27 @@ if (arg === 'uninstall' || arg === '--uninstall' || arg === '-u') {
   process.exit(0);
 }
 
+if (arg === 'pin') {
+  // Pin every registered config to the CURRENT version. Offline, instant — no
+  // registry check. For users who installed before pinning, or manually.
+  const { failed } = await repinAll(`${PKG}@${version}`, 'Pinned');
+  console.log(`\nPinned to ${version}. Restart your AI client to apply.`);
+  process.exit(failed.length > 0 ? 1 : 0);
+}
+
+if (arg === 'unpin') {
+  // Revert to bare `npx -y @kunobi/mcp` (always-latest). This re-introduces the
+  // per-spawn `latest` resolution — slower startup that can stall on the registry
+  // — by choice, for users who want the newest build on every launch.
+  const { failed } = await repinAll(PKG, 'Unpinned');
+  console.log(
+    '\nUnpinned — each launch now resolves the latest version (slower startup, can stall on the registry). Restart your AI client to apply.',
+  );
+  process.exit(failed.length > 0 ? 1 : 0);
+}
+
 if (arg === 'upgrade' || arg === '--upgrade') {
-  const { checkForUpdate, repin } = await import('@kunobi/mcp-installer');
+  const { checkForUpdate } = await import('@kunobi/mcp-installer');
 
   const info = await checkForUpdate('@kunobi/mcp', version);
   if (!info) {
@@ -116,35 +167,13 @@ if (arg === 'upgrade' || arg === '--upgrade') {
     process.exit(0);
   }
 
-  const results = repin({
-    name: 'kunobi',
-    command: 'npx',
-    args: ['-y', `@kunobi/mcp@${info.latest}`],
-  });
-  const updated = results.filter((r) => r.action === 'updated');
-  const failed = results.filter((r) => r.action === 'error');
-
-  if (updated.length === 0 && failed.length === 0) {
-    console.error(
-      "kunobi is not registered in any AI client config. Run 'kunobi-mcp install' first.",
-    );
-    process.exit(1);
-  }
-
-  for (const r of updated) {
-    console.log(
-      `Re-pinned ${r.client} (${r.scope}) → @kunobi/mcp@${info.latest}`,
-    );
-  }
-  for (const r of failed) {
-    console.error(`Failed to update ${r.client} (${r.scope}): ${r.error}`);
-  }
+  const { failed } = await repinAll(`${PKG}@${info.latest}`, 'Re-pinned');
 
   // Best-effort: warm the npm cache so the next client spawn is instant. Bounded
   // and non-fatal — if it fails, the next `npx` run simply fetches on demand.
   try {
     const { spawnSync } = await import('node:child_process');
-    spawnSync('npm', ['cache', 'add', `@kunobi/mcp@${info.latest}`], {
+    spawnSync('npm', ['cache', 'add', `${PKG}@${info.latest}`], {
       stdio: 'ignore',
       timeout: 60_000,
     });
@@ -416,18 +445,49 @@ async function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-// Non-blocking version check
-import('@kunobi/mcp-installer')
-  .then(({ checkForUpdate }) => checkForUpdate('@kunobi/mcp', version))
-  .then((update) => {
+// Non-blocking, best-effort startup advisories: notify if a newer version is
+// available, and (unless silenced) hint that an unpinned setup is slower and can
+// hang on the registry. Both run after the session is connected.
+function notify(level: 'info' | 'warning', data: string): void {
+  server.server
+    .sendLoggingMessage({ level, logger: 'kunobi-mcp', data })
+    .catch(() => {});
+}
+
+void (async () => {
+  try {
+    const { checkForUpdate, list } = await import('@kunobi/mcp-installer');
+
+    const update = await checkForUpdate('@kunobi/mcp', version);
     if (update?.updateAvailable) {
-      server.server
-        .sendLoggingMessage({
-          level: 'warning',
-          logger: 'kunobi-mcp',
-          data: `A newer version of @kunobi/mcp is available (${update.current} → ${update.latest}). Run 'npx -y @kunobi/mcp upgrade' (or 'kunobi-mcp upgrade') to re-pin your AI clients, then restart to apply.`,
-        })
-        .catch(() => {});
+      notify(
+        'warning',
+        `A newer version of @kunobi/mcp is available (${update.current} → ${update.latest}). Run 'npx -y @kunobi/mcp upgrade' (or 'kunobi-mcp upgrade') to re-pin your AI clients, then restart to apply.`,
+      );
     }
-  })
-  .catch(() => {});
+
+    // Unpinned = a bare `@kunobi/mcp` arg (no `@version`). Suppressible for users
+    // who deliberately run always-latest.
+    if (process.env.MCP_KUNOBI_NO_PIN_HINT !== '1') {
+      const unpinned = list().filter((c) =>
+        c.servers.some(
+          (s) =>
+            s.name === 'kunobi' &&
+            Array.isArray(s.args) &&
+            s.args.includes('@kunobi/mcp'),
+        ),
+      );
+      if (unpinned.length > 0) {
+        const where = unpinned
+          .map((c) => `${c.client} (${c.scope})`)
+          .join(', ');
+        notify(
+          'warning',
+          `Kunobi is running unpinned in: ${where}. Pinning speeds up startup and avoids registry hangs — run 'kunobi-mcp pin'. (Set MCP_KUNOBI_NO_PIN_HINT=1 to hide this, or 'kunobi-mcp unpin' to stay on latest deliberately.)`,
+        );
+      }
+    }
+  } catch {
+    // advisories are best-effort — never block or crash startup
+  }
+})();
