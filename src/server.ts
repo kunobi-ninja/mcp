@@ -10,6 +10,7 @@ import {
   getConnectionConfig,
   launchHint,
 } from './discovery.js';
+import { classifyBundlerLog } from './logging.js';
 import { VariantManager } from './manager.js';
 import { registerCallTool } from './tools/call.js';
 import { registerLaunchTool } from './tools/launch.js';
@@ -229,10 +230,11 @@ const manager = new VariantManager(server, {
   reconnectIntervalMs: connectionConfig.reconnectIntervalMs,
   autoReconnect: connectionConfig.autoConnect,
   logger: (level, message) => {
-    if (level === 'error' || level === 'warn') {
+    const mcpLevel = classifyBundlerLog(level, message);
+    if (mcpLevel) {
       server.server
         .sendLoggingMessage({
-          level: level === 'error' ? 'error' : 'warning',
+          level: mcpLevel,
           logger: 'kunobi-mcp',
           data: message,
         })
