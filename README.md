@@ -46,6 +46,21 @@ To remove the server from all clients:
 npx @kunobi/mcp --uninstall
 ```
 
+### Updating
+
+`install` pins your clients to an exact version (e.g. `@kunobi/mcp@1.2.3`) so each
+launch runs from the npm cache instead of resolving `latest` from the registry on
+every spawn — startup stays fast and can't stall on the network. When a newer
+version is published, the server tells you on connect; apply it with:
+
+```bash
+npx @kunobi/mcp upgrade
+```
+
+This re-pins every client where Kunobi is registered to the newest version and
+warms the cache. **Restart your AI client** to load it (the new version takes
+effect on the next start).
+
 ### Manual
 
 If you prefer manual setup, add the following to your client's MCP config:
@@ -167,8 +182,9 @@ kunobi-mcp [command] [options]
 | `list` | Show configured variants and connection status |
 | `add <name> <port>` | Add or update a variant |
 | `remove <name>` | Remove a variant |
-| `install` | Register this MCP server with your AI clients |
+| `install` | Register this MCP server with your AI clients (pinned to the current version) |
 | `uninstall` | Remove this MCP server from your AI clients |
+| `upgrade` | Re-pin your AI clients to the latest published version (restart to apply) |
 | `--help`, `-h` | Show help message |
 | `--version`, `-v` | Show version number |
 | *(no command, piped)* | Start the stdio MCP server (used by AI clients) |
