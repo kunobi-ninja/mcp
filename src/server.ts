@@ -28,6 +28,7 @@ Usage:
   kunobi-mcp remove <name>          Remove a variant
   kunobi-mcp install                Register this MCP server with your AI clients
   kunobi-mcp uninstall              Remove this MCP server from your AI clients
+  kunobi-mcp upgrade                Re-pin your AI clients to the latest version (restart to apply)
 
 Options:
   --help, -h          Show this help message
@@ -82,10 +83,14 @@ if (arg === 'remove') {
 
 if (arg === 'install' || arg === '--install' || arg === '-i') {
   const { install } = await import('@kunobi/mcp-installer');
+  // Pin to this exact version so client spawns run from the npm cache instead of
+  // resolving the `latest` dist-tag on every launch (a registry round-trip that
+  // is the slow/hang-prone part — see openai/codex #14470). Upgrades are explicit
+  // via `kunobi-mcp upgrade`, which re-pins to the newest version.
   await install({
     name: 'kunobi',
     command: 'npx',
-    args: ['-y', '@kunobi/mcp'],
+    args: ['-y', `@kunobi/mcp@${version}`],
   });
   process.exit(0);
 }
@@ -94,6 +99,63 @@ if (arg === 'uninstall' || arg === '--uninstall' || arg === '-u') {
   const { uninstall } = await import('@kunobi/mcp-installer');
   await uninstall({ name: 'kunobi' });
   process.exit(0);
+}
+
+if (arg === 'upgrade' || arg === '--upgrade') {
+  const { checkForUpdate, repin } = await import('@kunobi/mcp-installer');
+
+  const info = await checkForUpdate('@kunobi/mcp', version);
+  if (!info) {
+    console.error(
+      'Could not check for updates (offline or npm registry unreachable). Try again later.',
+    );
+    process.exit(1);
+  }
+  if (!info.updateAvailable) {
+    console.log(`Already on the latest version (${version}).`);
+    process.exit(0);
+  }
+
+  const results = repin({
+    name: 'kunobi',
+    command: 'npx',
+    args: ['-y', `@kunobi/mcp@${info.latest}`],
+  });
+  const updated = results.filter((r) => r.action === 'updated');
+  const failed = results.filter((r) => r.action === 'error');
+
+  if (updated.length === 0 && failed.length === 0) {
+    console.error(
+      "kunobi is not registered in any AI client config. Run 'kunobi-mcp install' first.",
+    );
+    process.exit(1);
+  }
+
+  for (const r of updated) {
+    console.log(
+      `Re-pinned ${r.client} (${r.scope}) → @kunobi/mcp@${info.latest}`,
+    );
+  }
+  for (const r of failed) {
+    console.error(`Failed to update ${r.client} (${r.scope}): ${r.error}`);
+  }
+
+  // Best-effort: warm the npm cache so the next client spawn is instant. Bounded
+  // and non-fatal — if it fails, the next `npx` run simply fetches on demand.
+  try {
+    const { spawnSync } = await import('node:child_process');
+    spawnSync('npm', ['cache', 'add', `@kunobi/mcp@${info.latest}`], {
+      stdio: 'ignore',
+      timeout: 60_000,
+    });
+  } catch {
+    // ignore — cache warming is an optimization, not a requirement
+  }
+
+  console.log(
+    `\nUpgraded ${version} → ${info.latest}. Restart your AI client to load the new version.`,
+  );
+  process.exit(failed.length > 0 ? 1 : 0);
 }
 
 const connectionConfig = getConnectionConfig();
@@ -363,7 +425,7 @@ import('@kunobi/mcp-installer')
         .sendLoggingMessage({
           level: 'warning',
           logger: 'kunobi-mcp',
-          data: `A newer version of @kunobi/mcp is available (${update.current} → ${update.latest}). Restart the MCP server to pick it up.`,
+          data: `A newer version of @kunobi/mcp is available (${update.current} → ${update.latest}). Run 'npx -y @kunobi/mcp upgrade' (or 'kunobi-mcp upgrade') to re-pin your AI clients, then restart to apply.`,
         })
         .catch(() => {});
     }
