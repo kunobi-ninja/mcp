@@ -1,7 +1,7 @@
 {
   "name": "@kunobi/mcp",
   "version": "0.0.0",
-  "description": "MCP server for Kunobi — platform management for AI assistants",
+  "description": "MCP server for Kunobi \u2014 platform management for AI assistants",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
@@ -29,7 +29,7 @@
     "dev:unlink": "pnpm unlink @kunobi/mcp-bundler && pnpm unlink @kunobi/mcp-installer && pnpm install"
   },
   "dependencies": {
-    "@kunobi/mcp-bundler": "^0.0.10",
+    "@kunobi/mcp-bundler": "^0.0.11",
     "@kunobi/mcp-installer": "^0.0.8",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^4.3.6"
