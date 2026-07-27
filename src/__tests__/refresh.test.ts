@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { VariantManager, VariantState } from '../manager.js';
+import type { ProxyReconciler } from '../tools/refresh.js';
 import { registerRefreshTool } from '../tools/refresh.js';
 
 vi.mock('../discovery.js', async (importOriginal) => {
@@ -40,6 +41,12 @@ function mockManager(states: Record<string, VariantState>): VariantManager {
   } as unknown as VariantManager;
 }
 
+function mockProxyRegistry(): ProxyReconciler & {
+  reconcile: ReturnType<typeof vi.fn>;
+} {
+  return { reconcile: vi.fn().mockResolvedValue(undefined) };
+}
+
 function getHandler(server: McpServer) {
   return (server as unknown as ServerInternals)._registeredTools.kunobi_refresh
     .handler;
@@ -49,7 +56,7 @@ describe('registerRefreshTool', () => {
   it('registers with correct annotations', () => {
     const server = createServer();
     const manager = mockManager({});
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_refresh;
@@ -61,10 +68,20 @@ describe('registerRefreshTool', () => {
   it('calls manager.refresh() when invoked', async () => {
     const server = createServer();
     const manager = mockManager({});
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     await getHandler(server)({});
     expect(manager.refresh).toHaveBeenCalled();
+  });
+
+  it('force-reconciles the proxy registry when invoked', async () => {
+    const server = createServer();
+    const manager = mockManager({});
+    const proxyRegistry = mockProxyRegistry();
+    registerRefreshTool(server, manager, proxyRegistry);
+
+    await getHandler(server)({});
+    expect(proxyRegistry.reconcile).toHaveBeenCalled();
   });
 
   it('reports connected variants in result', async () => {
@@ -76,7 +93,7 @@ describe('registerRefreshTool', () => {
         tools: ['dev__foo', 'dev__bar'],
       },
     });
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     const result = await getHandler(server)({});
     const text = result.content[0].text;
@@ -91,7 +108,7 @@ describe('registerRefreshTool', () => {
     const manager = mockManager({
       stable: { port: 3200, status: 'not_running', tools: [] },
     });
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('not running');
@@ -102,7 +119,7 @@ describe('registerRefreshTool', () => {
     const manager = mockManager({
       dev: { port: 3400, status: 'connecting', tools: [] },
     });
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('connecting...');
@@ -113,7 +130,7 @@ describe('registerRefreshTool', () => {
     const manager = mockManager({
       dev: { port: 3400, status: 'disconnected', tools: [] },
     });
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('disconnected (reconnecting)');
@@ -125,7 +142,7 @@ describe('registerRefreshTool', () => {
     const manager = mockManager({
       dev: { port: 3400, status: 'connected', tools: [] },
     });
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, mockProxyRegistry());
 
     const result = await getHandler(server)({});
     expect(result.content[0].text).toContain('Installed on system');

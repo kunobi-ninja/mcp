@@ -52,12 +52,15 @@ export interface ConnectionConfig {
   ports: Record<string, number>;
   reconnectIntervalMs: number;
   autoConnect: boolean;
+  proxyPollIntervalMs: number;
 }
 
 export function getConnectionConfig(): ConnectionConfig {
   const autoConnect = process.env.MCP_KUNOBI_AUTO_CONNECT !== 'false';
   const reconnectIntervalMs =
     Number(process.env.MCP_KUNOBI_RECONNECT_INTERVAL_MS) || 5000;
+  const proxyPollIntervalMs =
+    Number(process.env.MCP_KUNOBI_PROXY_POLL_INTERVAL_MS) || 10000;
 
   const config = loadConfig();
   const ports = { ...config.variants };
@@ -74,7 +77,7 @@ export function getConnectionConfig(): ConnectionConfig {
     }
   }
 
-  return { ports, reconnectIntervalMs, autoConnect };
+  return { ports, reconnectIntervalMs, autoConnect, proxyPollIntervalMs };
 }
 
 const KUNOBI_VARIANTS = ['', ' Dev', ' Unstable', ' E2E', ' Local'] as const;

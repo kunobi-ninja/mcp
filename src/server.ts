@@ -12,6 +12,7 @@ import {
 } from './discovery.js';
 import { classifyBundlerLog } from './logging.js';
 import { VariantManager } from './manager.js';
+import { ProxyRegistry } from './proxy/registry.js';
 import { registerCallTool } from './tools/call.js';
 import { registerLaunchTool } from './tools/launch.js';
 import { registerRefreshTool } from './tools/refresh.js';
@@ -72,6 +73,7 @@ Configuration:
 
 Environment:
   MCP_KUNOBI_RECONNECT_INTERVAL_MS   Reconnect interval in ms (default: 5000)
+  MCP_KUNOBI_PROXY_POLL_INTERVAL_MS  Extension MCP-proxy poll interval in ms (default: 10000)
   MCP_KUNOBI_VARIANTS                name:port pairs to merge (e.g. juan:4200,test:5000)
   MCP_KUNOBI_AUTO_CONNECT            Set "false" to disable automatic background connections`;
 
@@ -225,28 +227,35 @@ const server = new McpServer(
   },
 );
 
+// Shared logger wiring for every bundler-backed component (the variant
+// manager itself, and — below — the proxy registry's per-upstream bundlers):
+// classify the bundler's raw log line into an MCP logging level and forward
+// it over the session, best-effort.
+function bundlerLogger(level: string, message: string): void {
+  const mcpLevel = classifyBundlerLog(level, message);
+  if (mcpLevel) {
+    server.server
+      .sendLoggingMessage({
+        level: mcpLevel,
+        logger: 'kunobi-mcp',
+        data: message,
+      })
+      .catch(() => {});
+  }
+}
+
 const manager = new VariantManager(server, {
   ports: connectionConfig.ports,
   reconnectIntervalMs: connectionConfig.reconnectIntervalMs,
   autoReconnect: connectionConfig.autoConnect,
-  logger: (level, message) => {
-    const mcpLevel = classifyBundlerLog(level, message);
-    if (mcpLevel) {
-      server.server
-        .sendLoggingMessage({
-          level: mcpLevel,
-          logger: 'kunobi-mcp',
-          data: message,
-        })
-        .catch(() => {});
-    }
-  },
+  logger: bundlerLogger,
 });
 
 registerStatusTool(server, manager);
-registerRefreshTool(server, manager);
 registerLaunchTool(server);
 registerCallTool(server, manager);
+// registerRefreshTool is registered further below, once proxyRegistry exists
+// (kunobi_refresh forces a coalesced proxy reconcile alongside manager.refresh()).
 
 // Resource: passive way for the LLM to check Kunobi state
 server.registerResource(
@@ -416,9 +425,27 @@ await server.connect(transport);
 // becomes an orphan.
 process.stdin.on('close', () => void shutdown());
 
+// Registry of extension-contributed MCP proxies, discovered per-variant via
+// the `kunobi://mcp-proxies` resource. Constructed unconditionally (so
+// kunobi_refresh can force a reconcile even with auto-connect disabled); the
+// background poll loop below is gated the same way manager.start() is.
+const proxyRegistry = new ProxyRegistry({
+  server,
+  manager,
+  ttlMs: connectionConfig.proxyPollIntervalMs * 3,
+  logger: bundlerLogger,
+});
+registerRefreshTool(server, manager, proxyRegistry);
+
+let proxyPollTimer: ReturnType<typeof setInterval> | null = null;
 if (connectionConfig.autoConnect) {
   // Start the background connection manager after the MCP session is ready.
   manager.start();
+  proxyPollTimer = setInterval(
+    () => void proxyRegistry.reconcile(),
+    connectionConfig.proxyPollIntervalMs,
+  );
+  void proxyRegistry.reconcile();
 } else {
   server.server
     .sendLoggingMessage({
@@ -436,6 +463,8 @@ async function shutdown() {
   shuttingDown = true;
   const timeout = setTimeout(() => process.exit(1), 5_000);
   try {
+    if (proxyPollTimer) clearInterval(proxyPollTimer);
+    await proxyRegistry.teardownAll();
     await manager.stop();
     await server.close();
   } catch {

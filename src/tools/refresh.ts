@@ -2,6 +2,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { findKunobiVariants } from '../discovery.js';
 import type { VariantManager } from '../manager.js';
 
+/** The subset of `ProxyRegistry` this tool depends on — kept narrow so tests
+ *  can supply a fake without constructing a real registry. */
+export interface ProxyReconciler {
+  reconcile(): Promise<void>;
+}
+
 function formatRefreshResult(manager: VariantManager): string {
   const states = manager.getStates();
   const lines: string[] = ['Refresh complete. Current status:'];
@@ -32,6 +38,7 @@ function formatRefreshResult(manager: VariantManager): string {
 export function registerRefreshTool(
   server: McpServer,
   manager: VariantManager,
+  proxyRegistry: ProxyReconciler,
 ): void {
   server.registerTool(
     'kunobi_refresh',
@@ -46,6 +53,9 @@ export function registerRefreshTool(
     },
     async () => {
       await manager.refresh();
+      // Coalescing guarantees this forced pass isn't dropped even if a
+      // background poll is already reconciling proxies concurrently.
+      await proxyRegistry.reconcile();
       return {
         content: [
           { type: 'text' as const, text: formatRefreshResult(manager) },

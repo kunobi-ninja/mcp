@@ -462,6 +462,62 @@ describe('ProxyRegistry', () => {
     expect(callCount).toBeGreaterThanOrEqual(2);
   });
 
+  it('integration: an upstream discovered via a fake variant catalog wires its tools onto the shared server under the namespaced prefix, into snapshot(), and tears them down when the catalog empties', async () => {
+    // Simulates the real path end-to-end: VariantManager (here, a fake
+    // implementing VariantManagerLike) reports a variant whose
+    // `kunobi://mcp-proxies` catalog resource points at a fake root-path MCP
+    // upstream (ProxyUpstream's transport hits `http://127.0.0.1:<port>/`,
+    // distinct from a variant's own `/mcp` path). ProxyRegistry.reconcile()
+    // must connect that upstream, classify+register its tools directly on
+    // the SAME shared McpServer the hub exposes to the client — not just
+    // track them internally.
+    const server = makeTestServer();
+    const manager = new FakeManager();
+    manager.connectedVariants = ['dev'];
+
+    const uuid = 'itest-uuid';
+    const variant = 'dev';
+    const name = 'itest-proxy';
+    const originalTool = 'itest_tool';
+    const prefix = proxyToolPrefix(variant, name, uuid);
+    const expectedName = namespacedToolName(prefix, originalTool);
+
+    manager.readImpl = async () =>
+      present([proxy({ uuid, name, port: 41100 })]);
+
+    const registry = new ProxyRegistry({ server, manager });
+    await registry.reconcile();
+
+    // The upstream's tool list arrives after connect (as it would over a real
+    // bundler) — drive the reactive re-register path via 'tools_changed'.
+    const bundler = bundlerAtPort(41100);
+    bundler.tools = [makeTool(originalTool)];
+    bundler.emit('tools_changed', bundler.tools);
+    await flush();
+
+    const internals = server as unknown as {
+      _registeredTools?: Record<string, unknown>;
+    };
+    expect(internals._registeredTools?.[expectedName]).toBeDefined();
+
+    const entryPresent = registry.snapshot().find((e) => e.uuid === uuid);
+    const toolPresent = entryPresent?.tools.find(
+      (t) => t.originalTool === originalTool,
+    );
+    expect(toolPresent).toBeDefined();
+    expect(toolPresent?.dynamicToolName).toBe(expectedName);
+    expect(toolPresent?.directlyRegistered).toBe(true);
+
+    // Catalog empties (authoritative) -> the upstream is torn down and its
+    // tool removed from BOTH the shared server and the snapshot.
+    manager.readImpl = async () => present([]);
+    await registry.reconcile();
+
+    expect(internals._registeredTools?.[expectedName]).toBeUndefined();
+    expect(registry.snapshot().find((e) => e.uuid === uuid)).toBeUndefined();
+    expect(bundler.closeCalls).toBe(1);
+  });
+
   it('registers tools after a background reconnect succeeds, even though the FIRST connect attempt failed', async () => {
     // Regression: McpBundler.reconnectNow() resolves after ONE attempt; on
     // failure it only schedules a background retry. ProxyUpstream.register()
