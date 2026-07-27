@@ -131,6 +131,10 @@ export class VariantManager {
     return this.reconnectIntervalMs;
   }
 
+  getDisconnectGraceMs(): number {
+    return this.disconnectGraceMs;
+  }
+
   isRunning(): boolean {
     return this.started;
   }
