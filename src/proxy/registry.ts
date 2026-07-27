@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
+import type { CatalogProxy } from './catalog-schema.js';
 import { classifyRead } from './catalog-schema.js';
 import { classifyRegistration } from './namespace.js';
 import type { ProxyDesired } from './upstream.js';
@@ -229,12 +230,7 @@ export class ProxyRegistry {
 
   private async applyDesired(
     variant: string,
-    desiredList: {
-      uuid: string;
-      name: string;
-      port: number;
-      incarnation: string;
-    }[],
+    desiredList: CatalogProxy[],
   ): Promise<boolean> {
     let changed = false;
     const desiredByUuid = new Map(desiredList.map((d) => [d.uuid, d]));
@@ -275,10 +271,23 @@ export class ProxyRegistry {
         reconnectIntervalMs: this.manager.getReconnectIntervalMs(),
         logger: this.logger,
       });
+      // `register()` must run unconditionally — it's the ONLY place
+      // ProxyUpstream wires up serverRef/classifyRef, which its own
+      // 'connected'/'tools_changed' listeners require. McpBundler.connect()
+      // resolves after a single attempt and merely SCHEDULES a background
+      // retry on failure, so gating register() on connectedOk would leave a
+      // temporarily-unreachable upstream's refs unset — its later
+      // background reconnect would then silently no-op forever. When
+      // disconnected, register() just enqueues zero direct registrations
+      // (harmless) while still wiring the refs for the eventual reconnect.
       const connectedOk = await up.connect();
-      if (connectedOk) {
-        await up.register(this.server, (name) =>
-          classifyRegistration(this.server, name),
+      await up.register(this.server, (name) =>
+        classifyRegistration(this.server, name),
+      );
+      if (!connectedOk) {
+        this.logger(
+          'warn',
+          `[proxy ${uuid}] initial connect failed for variant ${variant}; will retry in the background`,
         );
       }
       variantMap.set(uuid, up);

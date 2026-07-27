@@ -20,6 +20,12 @@ import { ProxyRegistry } from '../proxy/registry.js';
 // upstream at port N" and inspect/mutate it.
 const fb = vi.hoisted(() => ({
   instances: [] as FakeBundlerInstance[],
+  /** When true, the NEXT constructed FakeBundler fails its first
+   *  `reconnectNow()` (stays disconnected, no 'connected' emit) — simulating
+   *  McpBundler.reconnectNow() resolving after a single failed attempt while
+   *  its background retry loop keeps trying. Consumed (reset to false) at
+   *  construction time so only the next instance is affected. */
+  failNextConnect: false,
 }));
 
 interface FakeBundlerInstance extends EventEmitter {
@@ -38,12 +44,15 @@ vi.mock('@kunobi/mcp-bundler', async (importOriginal) => {
     state: 'idle' | 'connecting' | 'connected' | 'disconnected' = 'idle';
     tools: Tool[] = [];
     closeCalls = 0;
+    private pendingFailConnect: boolean;
 
     constructor(options: { transport?: { url?: string } }) {
       super();
       const url = options.transport?.url ?? '';
       const match = /:(\d+)\//.exec(url);
       this.port = match ? Number(match[1]) : -1;
+      this.pendingFailConnect = fb.failNextConnect;
+      fb.failNextConnect = false;
       fb.instances.push(this);
     }
 
@@ -56,6 +65,11 @@ vi.mock('@kunobi/mcp-bundler', async (importOriginal) => {
     }
 
     async reconnectNow() {
+      if (this.pendingFailConnect) {
+        this.pendingFailConnect = false;
+        this.state = 'disconnected';
+        return;
+      }
       this.state = 'connected';
       this.emit('connected');
     }
@@ -192,6 +206,7 @@ function deferred<T>(): {
 describe('ProxyRegistry', () => {
   afterEach(() => {
     fb.instances.length = 0;
+    fb.failNextConnect = false;
     vi.restoreAllMocks();
   });
 
@@ -445,5 +460,42 @@ describe('ProxyRegistry', () => {
     // promises resolve.
     expect(registry.snapshot()).toHaveLength(0);
     expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('registers tools after a background reconnect succeeds, even though the FIRST connect attempt failed', async () => {
+    // Regression: McpBundler.reconnectNow() resolves after ONE attempt; on
+    // failure it only schedules a background retry. ProxyUpstream.register()
+    // is the ONLY place serverRef/classifyRef get wired up, and the
+    // 'connected'/'tools_changed' listeners early-return without them. If
+    // applyDesired() only calls register() when connect() succeeded, a proxy
+    // that's down on the first reconcile pass never gets its refs wired, so
+    // a LATER successful background reconnect's 'connected' event does
+    // nothing and the proxy is stuck at 0 tools forever.
+    const server = makeTestServer();
+    const manager = new FakeManager();
+    manager.connectedVariants = ['dev'];
+    manager.readImpl = async () => present([proxy({ port: 41011 })]);
+
+    fb.failNextConnect = true; // first connect() attempt fails
+    const registry = new ProxyRegistry({ server, manager });
+    await registry.reconcile();
+
+    // The proxy is still tracked even though its first connect failed.
+    expect(registry.get('dev', 'u1')).toBeDefined();
+    const bundler = bundlerAtPort(41011);
+    expect(bundler.state).toBe('disconnected');
+
+    // Background reconnect succeeds later — the fake simulates McpBundler's
+    // own retry loop by flipping state and emitting 'connected' directly,
+    // after the upstream has re-listed tools.
+    bundler.tools = [makeTool('some_tool')];
+    bundler.state = 'connected';
+    bundler.emit('connected');
+    await flush();
+
+    const entry = registry.snapshot().find((e) => e.uuid === 'u1');
+    const tool = entry?.tools.find((t) => t.originalTool === 'some_tool');
+    expect(tool).toBeDefined();
+    expect(tool?.directlyRegistered).toBe(true);
   });
 });
