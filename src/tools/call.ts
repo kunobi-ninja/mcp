@@ -84,7 +84,7 @@ export function registerCallTool(
             content: [
               {
                 type: 'text' as const,
-                text: `Proxy (variant="${variant}", proxy_uuid="${proxy_uuid}") is not currently connected. Use kunobi_refresh first.`,
+                text: `Proxy (variant="${variant}", proxy_uuid="${proxy_uuid}") is no longer available (it may have just been revoked). Run kunobi_refresh, then re-read kunobi://tools.`,
               },
             ],
             isError: true,

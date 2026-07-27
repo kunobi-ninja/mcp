@@ -136,6 +136,14 @@ export class ProxyUpstream {
   ): Promise<void> {
     this.registerOp = this.registerOp
       .then(async () => {
+        // INVARIANT (load-bearing for generation safety): this body must run to
+        // completion SYNCHRONOUSLY — it contains no `await`. teardown()'s
+        // `await this.registerOp` drain + final unregisterOwn() is safe ONLY
+        // because a started pass cannot yield mid-way and register tools after
+        // teardown. `getToolDefinitions()` below is the bundler's SYNC cached
+        // getter (NOT the async `listTools()`) — TS pins that half. Do NOT add
+        // an `await` inside this callback; the mid-loop `torn` re-checks below
+        // are the safety net if this invariant is ever broken.
         if (this.torn) return;
         // 1. Clear our own prior tools FIRST, so classify() can't see them.
         this.unregisterOwn(server);
