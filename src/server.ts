@@ -253,9 +253,9 @@ const manager = new VariantManager(server, {
 
 registerStatusTool(server, manager);
 registerLaunchTool(server);
-registerCallTool(server, manager);
-// registerRefreshTool is registered further below, once proxyRegistry exists
-// (kunobi_refresh forces a coalesced proxy reconcile alongside manager.refresh()).
+// registerCallTool and registerRefreshTool are registered further below, once
+// proxyRegistry exists (kunobi_call routes proxy_uuid addresses through it;
+// kunobi_refresh forces a coalesced proxy reconcile alongside manager.refresh()).
 
 // Resource: passive way for the LLM to check Kunobi state
 server.registerResource(
@@ -305,7 +305,11 @@ server.registerResource(
         {
           uri: 'kunobi://tools',
           mimeType: 'application/json',
-          text: JSON.stringify(buildDiscoveryCatalog(manager), null, 2),
+          text: JSON.stringify(
+            buildDiscoveryCatalog(manager, proxyRegistry),
+            null,
+            2,
+          ),
         },
       ],
     };
@@ -435,6 +439,7 @@ const proxyRegistry = new ProxyRegistry({
   ttlMs: connectionConfig.proxyPollIntervalMs * 3,
   logger: bundlerLogger,
 });
+registerCallTool(server, manager, proxyRegistry);
 registerRefreshTool(server, manager, proxyRegistry);
 
 let proxyPollTimer: ReturnType<typeof setInterval> | null = null;

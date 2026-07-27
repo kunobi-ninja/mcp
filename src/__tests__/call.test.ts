@@ -1,7 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { VariantManager, VariantState } from '../manager.js';
+import type { ProxyCaller } from '../tools/call.js';
 import { registerCallTool } from '../tools/call.js';
+
+function emptyProxyRegistry(): ProxyCaller {
+  return {
+    get: () => undefined,
+    snapshot: () => [],
+  };
+}
 
 type RegisteredTool = {
   handler: (args: unknown) => Promise<{
@@ -53,7 +61,7 @@ describe('registerCallTool', () => {
   it('returns error for unknown variant', async () => {
     const server = createServer();
     const manager = mockManager({});
-    registerCallTool(server, manager);
+    registerCallTool(server, manager, emptyProxyRegistry());
 
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_call;
@@ -84,7 +92,7 @@ describe('registerCallTool', () => {
       callVariantTool,
     );
 
-    registerCallTool(server, manager);
+    registerCallTool(server, manager, emptyProxyRegistry());
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_call;
 
@@ -117,7 +125,7 @@ describe('registerCallTool', () => {
       callVariantTool,
     );
 
-    registerCallTool(server, manager);
+    registerCallTool(server, manager, emptyProxyRegistry());
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_call;
 
