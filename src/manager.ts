@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {
   CallToolResult,
   Prompt,
+  ReadResourceResult,
   Resource,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -199,6 +200,25 @@ export class VariantManager {
     return tracked.bundler.callTool(tool, args);
   }
 
+  listConnectedVariants(): string[] {
+    return [...this.tracked.entries()]
+      .filter(([, t]) => t.bundler.getState() === 'connected')
+      .map(([v]) => v);
+  }
+
+  async readVariantResource(
+    variant: string,
+    uri: string,
+  ): Promise<ReadResourceResult | null> {
+    const tracked = this.tracked.get(variant);
+    if (!tracked || tracked.bundler.getState() !== 'connected') return null;
+    return tracked.bundler.readResource(uri);
+  }
+
+  notifyToolListChanged(): void {
+    this.notifyChanged({ capabilitiesChanged: true, resourceUpdates: false });
+  }
+
   async refresh(): Promise<void> {
     if (this.refreshing) return;
     this.refreshing = true;
@@ -265,18 +285,18 @@ export class VariantManager {
     await tracked.adapter.registerPrompts(this.server);
   }
 
-  private async addVariant(variant: string, port: number): Promise<void> {
-    this.logger(
-      'info',
-      `[variant-manager] Tracking ${variant} on port ${port}`,
-    );
-
+  private buildUpstreamBundler(
+    name: string,
+    url: string,
+    headers: Record<string, string>,
+    adapterOpts: ConstructorParameters<typeof McpBundlerServerAdapter>[1],
+  ): { bundler: McpBundler; adapter: McpBundlerServerAdapter } {
     const bundler = new McpBundler({
-      name: variant,
+      name,
       transport: {
         type: 'http',
-        url: `http://127.0.0.1:${port}/mcp`,
-        headers: { 'X-Kunobi-Client': '@kunobi/mcp' },
+        url,
+        headers,
       },
       reconnect: {
         enabled: this.autoReconnect,
@@ -286,17 +306,33 @@ export class VariantManager {
       logger: this.logger,
     });
 
-    const adapter = new McpBundlerServerAdapter(bundler, {
-      toolPrefix: `${variant}__`,
-      promptPrefix: `${variant}__`,
-      mapResource: (resource) => ({
-        name: buildVariantResourceName(variant, resource),
-        uri: buildVariantResourceUri(variant, resource.uri),
-        title: resource.title,
-        description: resource.description,
-        mimeType: resource.mimeType,
-      }),
-    });
+    const adapter = new McpBundlerServerAdapter(bundler, adapterOpts);
+
+    return { bundler, adapter };
+  }
+
+  private async addVariant(variant: string, port: number): Promise<void> {
+    this.logger(
+      'info',
+      `[variant-manager] Tracking ${variant} on port ${port}`,
+    );
+
+    const { bundler, adapter } = this.buildUpstreamBundler(
+      variant,
+      `http://127.0.0.1:${port}/mcp`,
+      { 'X-Kunobi-Client': '@kunobi/mcp' },
+      {
+        toolPrefix: `${variant}__`,
+        promptPrefix: `${variant}__`,
+        mapResource: (resource) => ({
+          name: buildVariantResourceName(variant, resource),
+          uri: buildVariantResourceUri(variant, resource.uri),
+          title: resource.title,
+          description: resource.description,
+          mimeType: resource.mimeType,
+        }),
+      },
+    );
 
     const tracked: TrackedVariant = {
       adapter,
