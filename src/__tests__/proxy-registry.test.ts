@@ -233,6 +233,34 @@ describe('ProxyRegistry', () => {
     expect(manager.notifyToolListChanged).toHaveBeenCalled();
   });
 
+  it('never rejects when a reconcile pass throws; logs and stays usable', async () => {
+    // reconcile() is awaited by kunobi_refresh and launched fire-and-forget by
+    // the poll loop, so a throw inside a pass must be swallowed to a log — not
+    // propagated (which would fail the refresh tool / raise unhandledRejection).
+    const server = makeTestServer();
+    const manager = new FakeManager();
+    manager.connectedVariants = ['dev'];
+    manager.readImpl = async () => {
+      throw new Error('boom');
+    };
+    const logger = vi.fn();
+
+    const registry = new ProxyRegistry({ server, manager, logger });
+
+    // Resolves rather than rejects, and reports the failure.
+    await expect(registry.reconcile()).resolves.toBeUndefined();
+    expect(logger).toHaveBeenCalledWith(
+      'error',
+      expect.stringContaining('reconcile pass failed: boom'),
+    );
+
+    // The `reconciling` guard was released in `finally`, so a later pass runs
+    // normally and picks up recovered state.
+    manager.readImpl = async () => present([proxy({ port: 41099 })]);
+    await expect(registry.reconcile()).resolves.toBeUndefined();
+    expect(registry.get('dev', 'u1')).toBeDefined();
+  });
+
   it('replaces the upstream when incarnation changes (same uuid/port)', async () => {
     const server = makeTestServer();
     const manager = new FakeManager();

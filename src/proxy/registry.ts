@@ -134,7 +134,22 @@ export class ProxyRegistry {
     const run = async (): Promise<void> => {
       do {
         this.pendingForce = false;
-        await this.runOnce();
+        try {
+          await this.runOnce();
+        } catch (err) {
+          // reconcile() MUST never reject: kunobi_refresh awaits it, and the
+          // background poll launches it fire-and-forget (`void reconcile()`).
+          // A throw from a proxy teardown/register (or any future read path)
+          // would otherwise fail the refresh tool or raise an unhandledRejection.
+          // Swallow to a log; the next pass — the forced one below, or the next
+          // poll — retries. State is left as runOnce mutated it (idempotent).
+          this.logger(
+            'error',
+            `[proxy-registry] reconcile pass failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
       } while (this.pendingForce);
     };
     this.currentRun = run().finally(() => {
