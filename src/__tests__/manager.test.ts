@@ -282,6 +282,19 @@ describe('VariantManager', () => {
 
     expect(bundlerControls.instances[0]?.reconnectEnabled).toBe(false);
   });
+
+  it('readVariantResource returns null for an unconnected variant', async () => {
+    const server = createServer();
+    const manager = new VariantManager(server, {
+      ports: { dev: 3400 },
+      reconnectIntervalMs: 5000,
+      autoReconnect: false,
+    });
+    expect(
+      await manager.readVariantResource('dev', 'kunobi://mcp-proxies'),
+    ).toBeNull();
+    expect(manager.listConnectedVariants()).toEqual([]);
+  });
 });
 
 describe('VariantState type', () => {

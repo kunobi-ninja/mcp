@@ -67,7 +67,7 @@ describe('built-in tools registration', () => {
   it('kunobi_refresh is registered with correct annotations', () => {
     const server = createServer();
     const manager = mockManager({});
-    registerRefreshTool(server, manager);
+    registerRefreshTool(server, manager, { reconcile: async () => {} });
 
     const tool = (server as unknown as ServerInternals)._registeredTools
       .kunobi_refresh;

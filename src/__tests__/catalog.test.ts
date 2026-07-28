@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { ProxySnapshotProvider } from '../catalog.js';
 import { buildDiscoveryCatalog } from '../catalog.js';
 import type { VariantManager } from '../manager.js';
+
+function emptyProxyRegistry(): ProxySnapshotProvider {
+  return { snapshot: () => [] };
+}
 
 describe('buildDiscoveryCatalog', () => {
   it('includes full downstream metadata and dynamic names', () => {
@@ -48,7 +53,7 @@ describe('buildDiscoveryCatalog', () => {
         ]),
     } as unknown as VariantManager;
 
-    const catalog = buildDiscoveryCatalog(manager);
+    const catalog = buildDiscoveryCatalog(manager, emptyProxyRegistry());
     const dev = catalog.variants.dev as {
       tools: Array<{
         dynamicToolName: string;
@@ -63,5 +68,47 @@ describe('buildDiscoveryCatalog', () => {
     expect(dev.tools[0]?.inputSchema.required).toEqual(['action']);
     expect(dev.prompts[0]?.dynamicPromptName).toBe('dev__setup');
     expect(dev.resources[0]?.uri).toBe('kunobi://resource/status');
+    expect(catalog.proxies.entries).toEqual([]);
+  });
+
+  it('lists proxy entries with proxy_uuid and per-tool reachability', () => {
+    const manager = {
+      getCatalog: () => new Map(),
+    } as unknown as VariantManager;
+
+    const proxyRegistry: ProxySnapshotProvider = {
+      snapshot: () => [
+        {
+          variant: 'dev',
+          uuid: 'u1',
+          name: 'signoz',
+          tools: [
+            {
+              originalTool: 'signoz_query_range',
+              dynamicToolName: 'ext_signoz_u1__signoz_query_range',
+              directlyRegistered: false,
+            },
+          ],
+        },
+      ],
+    };
+
+    const catalog = buildDiscoveryCatalog(manager, proxyRegistry);
+
+    expect(catalog.proxies.entries).toHaveLength(1);
+    expect(catalog.proxies.entries[0]).toEqual({
+      variant: 'dev',
+      proxy_uuid: 'u1',
+      name: 'signoz',
+      tools: [
+        {
+          originalTool: 'signoz_query_range',
+          dynamicToolName: 'ext_signoz_u1__signoz_query_range',
+          directlyRegistered: false,
+        },
+      ],
+    });
+    expect(catalog.proxies.note).toContain('kunobi_call');
+    expect(catalog.proxies.note).toContain('directlyRegistered:false');
   });
 });

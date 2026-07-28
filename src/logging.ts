@@ -1,4 +1,5 @@
 import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js';
+import { PROXY_CATALOG_URI } from './proxy/registry.js';
 
 // A failed attempt to (re)connect to a variant's port is expected operation for
 // this hub, not a client-actionable error: the hub is designed for Kunobi
@@ -17,6 +18,18 @@ function isExpectedConnectFailure(message: string): boolean {
   );
 }
 
+// The hub polls each connected variant's unlisted `kunobi://mcp-proxies`
+// resource (see ProxyRegistry) every poll interval. Older variants don't serve
+// it, so the unchanged bundler logs the failed read at `error` on every pass —
+// expected operation the registry already handles by failing closed. Any
+// bundler log mentioning this URI is the hub's own poll traffic, so route it to
+// `debug`: a mixed-version setup (updated hub + un-updated app) must not spam
+// the client with recurring read-failure errors. Reads of any OTHER resource
+// are unaffected and still surface genuine errors (see logging.test).
+function isExpectedProxyCatalogPoll(message: string): boolean {
+  return message.includes(PROXY_CATALOG_URI);
+}
+
 // Map a bundler log (level, message) to the MCP logging level the hub should
 // emit, or `null` to drop it. Mirrors the previous inline behaviour — only
 // `error`/`warn` are surfaced to the client — with one change: expected
@@ -27,6 +40,14 @@ export function classifyBundlerLog(
   level: string,
   message: string,
 ): LoggingLevel | null {
+  // Expected proxy-catalog poll traffic is never client-actionable, at any
+  // level the bundler emits it (error read-failure, warn session-expired).
+  if (
+    (level === 'error' || level === 'warn') &&
+    isExpectedProxyCatalogPoll(message)
+  ) {
+    return 'debug';
+  }
   if (level === 'error') {
     return isExpectedConnectFailure(message) ? 'debug' : 'error';
   }
